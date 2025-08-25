@@ -3,6 +3,8 @@ async function getBlocklock() {
   const anyMod = mod as { default?: unknown } & Record<string, unknown>;
   return (anyMod?.default as Record<string, unknown>) ?? (anyMod as Record<string, unknown>);
 }
+import { Blocklock, SolidityEncoder, encodeCiphertextToSolidity } from "blocklock-js";
+import { ethers } from "ethers";
 
 export type IntentPayload = {
   market: string;
@@ -12,33 +14,36 @@ export type IntentPayload = {
   targetBlock: bigint;
 };
 
-export async function encryptIntent(payload: IntentPayload): Promise<`0x${string}`> {
+export async function encryptIntent(
+  payload: IntentPayload,
+  signer: ethers.Signer,
+  chainId: number
+): Promise<`0x${string}`> {
   const { targetBlock, ...rest } = payload;
-  const plaintext = new TextEncoder().encode(JSON.stringify(rest));
-  const bl = (await getBlocklock()) as Record<string, unknown>;
-  type EncryptFn = (args: {
-    condition: { type: string; block: bigint };
-    plaintext: Uint8Array;
-  }) => Promise<{ ciphertext?: string } | string>;
-  const fn = (bl.encrypt ?? bl.seal ?? bl.encryptPayload) as EncryptFn | undefined;
-  if (!fn) {
-    throw new Error("blocklock-js: encrypt function not available");
+  const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+  const msgBytes = abiCoder.encode([
+    "string",
+    "string",
+    "string",
+    "uint256",
+  ], [rest.market, rest.side, rest.amount, rest.slippageBps]);
+  const encodedMessage = ethers.getBytes(msgBytes);
+
+  // Create Blocklock instance
+  const blocklockjs = Blocklock.createFromChainId(signer, chainId);
+  const cipherMessage = await blocklockjs.encrypt(encodedMessage, targetBlock);
+  let ciphertext: string;
+  if (typeof cipherMessage === "string") {
+    ciphertext = cipherMessage;
+  } else if (cipherMessage instanceof Uint8Array) {
+    ciphertext = ethers.hexlify(cipherMessage);
+  } else {
+    throw new Error("blocklock-js: invalid ciphertext output");
   }
-  const result = await fn({
-    condition: { type: "block-gte", block: targetBlock },
-    plaintext,
-  });
-  let ct: unknown;
-  if (typeof result === "string") {
-    ct = result;
-  } else if (typeof result === "object" && result !== null) {
-    const maybe = (result as { ciphertext?: unknown }).ciphertext;
-    if (typeof maybe === "string") ct = maybe;
-  }
-  if (typeof ct !== "string" || !ct.startsWith("0x")) {
+  if (!ciphertext.startsWith("0x")) {
     throw new Error("blocklock-js: invalid ciphertext format");
   }
-  return ct as `0x${string}`;
+  return ciphertext as `0x${string}`;
 }
 
 export async function tryDecryptIntent(

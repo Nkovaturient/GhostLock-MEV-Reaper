@@ -7,23 +7,36 @@ import { useQuery } from "@tanstack/react-query";
 export type UserIntent = {
   id: bigint;
   user: `0x${string}`;
-  targetBlock: bigint;
+  targetBlock: string;
   encrypted: `0x${string}`;
   status: "Pending" | "Ready" | "Settled";
-  inclusionBlock: bigint;
-  settlementPrice: bigint;
+  inclusionBlock: string;
+  settlementPrice: string;
   decrypted?: IntentPayload | null;
 };
 
 type RawIntent = {
   id: bigint;
   user: `0x${string}`;
-  targetBlock: bigint;
+  targetBlock: string;
   encrypted: `0x${string}`;
   status: number;
-  inclusionBlock: bigint;
-  settlementPrice: bigint;
+  inclusionBlock: string;
+  settlementPrice: string;
 };
+
+function bigIntToString<T>(obj: T): T {
+  if (typeof obj === "bigint") return obj.toString() as T;
+  if (Array.isArray(obj)) return obj.map(bigIntToString) as T;
+  if (obj && typeof obj === "object") {
+    const out: Record<string, unknown> = {};
+    for (const k in obj as Record<string, unknown>) {
+      out[k] = bigIntToString((obj as Record<string, unknown>)[k]);
+    }
+    return out as T;
+  }
+  return obj;
+}
 
 export function useUserIntents() {
   const { address } = useAccount();
@@ -38,8 +51,8 @@ export function useUserIntents() {
       enabled: !!address,
       refetchInterval: 5000,
       select(data) {
-        const arr = Array.from(data as ReadonlyArray<RawIntent>);
-        return arr.map((t) => ({
+        const arr = Array.from(data as unknown as ReadonlyArray<RawIntent>);
+        return arr.map((t) => bigIntToString({
           id: t.id,
           user: t.user,
           targetBlock: t.targetBlock,
@@ -60,7 +73,7 @@ export function useUserIntents() {
       const results = await Promise.all(
         list.map(async (it: UserIntent) => ({
           ...it,
-          decrypted: await tryDecryptIntent(it.encrypted, currentBlock as bigint),
+          decrypted: await tryDecryptIntent(it.encrypted, BigInt(it.targetBlock)),
         }))
       );
       return results as UserIntent[];
