@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 
 export default function DarkModeToggle() {
+  const [mounted, setMounted] = useState(false);
   const [dark, setDark] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     const stored = localStorage.getItem("theme");
@@ -10,6 +11,7 @@ export default function DarkModeToggle() {
   });
 
   useEffect(() => {
+    setMounted(true);
     const html = document.documentElement;
     if (dark) {
       html.setAttribute("data-theme", "dark");
@@ -19,6 +21,10 @@ export default function DarkModeToggle() {
       localStorage.setItem("theme", "light");
     }
   }, [dark]);
+
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <button
