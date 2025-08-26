@@ -1,21 +1,58 @@
-const express = require('express');
-const cors= require('cors');
-const app=express();
+const express = require('express')
+const cors = require('cors')
+const path = require('path')
 
-app.use(cors());
+const app = express()
+const PORT = process.env.PORT || 4000
 
-const PORT= process.env.PORT || 4000;
+// Middleware
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  credentials: true
+}))
+app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
 
-app.listen(PORT, ()=>{
-    console.log(`Server Activated on https://localhost:${PORT}`);
-});
+// Routes
+const auctionsRouter = require('./routes/auctions')
+const intentsRouter = require('./routes/intents')
+const marketsRouter = require('./routes/markets')
 
-/**
- * Backend fetches ready intents from GhostLockIntents.
-Backend computes clearing price.
-Backend signs and sends settleBatch(requestIds, epoch, marketId, clearingPrice) with an executor wallet.
+app.use('/api/auctions', auctionsRouter)
+app.use('/api/intents', intentsRouter)
+app.use('/api/markets', marketsRouter)
 
-Frontend only:
-Displays preview data from backend (/epochs/:epoch/markets/:id/preview).
-Lets an allowlisted operator click “Settle” which calls the backend /settle endpoint. The backend then actually hits the chain.
- */
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    service: 'GhostLock MEV Reaper API'
+  })
+})
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Server error:', err)
+  res.status(500).json({ 
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+  })
+})
+
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' })
+})
+
+app.listen(PORT, () => {
+  console.log(`🚀 GhostLock MEV Reaper API server running on http://localhost:${PORT}`)
+  console.log(`📊 Health check: http://localhost:${PORT}/health`)
+  console.log(`🔗 API endpoints:`)
+  console.log(`   - GET  /api/auctions`)
+  console.log(`   - GET  /api/intents/user/:address`)
+  console.log(`   - GET  /api/markets`)
+  console.log(`   - POST /api/intents/submit`)
+})
+
+module.exports = app

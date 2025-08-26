@@ -1,20 +1,31 @@
 {
-  "name": "server",
+  "name": "ghostlock-mev-reaper-server",
   "version": "1.0.0",
-  "description": "Implementing Solver and AI Batching for GhostLock: MEV Reaper",
+  "description": "Backend API for GhostLock: MEV Reaper platform",
   "main": "index.js",
-  "scripts": {
-    "start": "nodemon index.js"
-  },
-  "keywords": [],
-  "author": "Neha Kumari",
-  "license": "ISC",
   "type": "commonjs",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mev",
+    "blockchain",
+    "defi",
+    "trading",
+    "encryption",
+    "batch-auctions"
+  ],
+  "author": "GhostLock Team",
+  "license": "MIT",
   "dependencies": {
     "cors": "^2.8.5",
-    "dotenv": "^17.2.1",
+    "dotenv": "^16.4.5",
     "ethers": "^6.15.0",
-    "express": "^5.1.0",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
     "nodemon": "^3.1.10"
   }
 }
