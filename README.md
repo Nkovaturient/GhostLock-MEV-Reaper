@@ -224,18 +224,17 @@ forge verify-contract <contract_address> <contract_name> --chain base-sepolia
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
+<!--
 ## 🔗 Links
 
 - **Documentation**: [docs.ghostlock.io](https://docs.ghostlock.io)
 - **Website**: [ghostlock.io](https://ghostlock.io)
 - **Twitter**: [@GhostLockDeFi](https://twitter.com/GhostLockDeFi)
 - **Discord**: [Join our community](https://discord.gg/ghostlock)
+-->
 
-## 🙏 Acknowledgments
+##  Acknowledgments
 
 - [Blocklock Protocol](https://github.com/randa-mu/blocklock-solidity) for time-locked encryption
 - [Randomness Protocol](https://github.com/randa-mu/randomness-solidity) for VRF implementation
@@ -244,4 +243,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**⚠️ Disclaimer**: This is experimental software. Use at your own risk. Not audited for mainnet use.
+**⚠️ Disclaimer**: Not yet audited for mainnet use.
