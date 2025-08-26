@@ -41,23 +41,6 @@ router.get('/', (req, res) => {
   }
 })
 
-// GET /api/markets/:id - Get specific market
-router.get('/:id', (req, res) => {
-  try {
-    const { id } = req.params
-    const market = mockMarkets.find(m => m.id === parseInt(id))
-    
-    if (!market) {
-      return res.status(404).json({ error: 'Market not found' })
-    }
-    
-    res.json(market)
-  } catch (error) {
-    console.error('Error fetching market:', error)
-    res.status(500).json({ error: 'Failed to fetch market data' })
-  }
-})
-
 // GET /api/markets/stats - Get market statistics
 router.get('/stats', (req, res) => {
   try {
@@ -79,6 +62,23 @@ router.get('/stats', (req, res) => {
   } catch (error) {
     console.error('Error calculating market stats:', error)
     res.status(500).json({ error: 'Failed to calculate market statistics' })
+  }
+})
+
+// GET /api/markets/:id - Get specific market
+router.get('/:id', (req, res) => {
+  try {
+    const { id } = req.params
+    const market = mockMarkets.find(m => m.id === parseInt(id))
+    
+    if (!market) {
+      return res.status(404).json({ error: 'Market not found' })
+    }
+    
+    res.json(market)
+  } catch (error) {
+    console.error('Error fetching market:', error)
+    res.status(500).json({ error: 'Failed to fetch market data' })
   }
 })
 

@@ -3,13 +3,10 @@ const cors = require('cors')
 const path = require('path')
 
 const app = express()
-const PORT = process.env.PORT || 4000
+const PORT = process.env.PORT || 4800
 
 // Middleware
-app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
-  credentials: true
-}))
+app.use(cors({}))
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
@@ -46,13 +43,8 @@ app.use('*', (req, res) => {
 })
 
 app.listen(PORT, () => {
-  console.log(`🚀 GhostLock MEV Reaper API server running on http://localhost:${PORT}`)
-  console.log(`📊 Health check: http://localhost:${PORT}/health`)
-  console.log(`🔗 API endpoints:`)
-  console.log(`   - GET  /api/auctions`)
-  console.log(`   - GET  /api/intents/user/:address`)
-  console.log(`   - GET  /api/markets`)
-  console.log(`   - POST /api/intents/submit`)
+  console.log(`GhostLock MEV Reaper API server running on http://localhost:${PORT}`)
+  console.log(` Health check: http://localhost:${PORT}/health`)
 })
 
 module.exports = app

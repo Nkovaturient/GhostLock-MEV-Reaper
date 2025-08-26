@@ -2,21 +2,21 @@
 export const CONFIG = {
   // Network Configuration
   CHAIN_ID: 84532, // Base Sepolia
-  RPC_URL: process.env.VITE_RPC_URL || 'https://sepolia.base.org',
+  RPC_URL: import.meta.env.VITE_RPC_URL || 'https://sepolia.base.org',
   
   // Contract Addresses (Placeholders - Replace with actual deployed addresses)
   CONTRACTS: {
-    GHOSTLOCK_INTENTS: process.env.VITE_GHOSTLOCK_INTENTS_ADDRESS || '0x0000000000000000000000000000000000000000',
-    BATCH_SETTLEMENT: process.env.VITE_BATCH_SETTLEMENT_ADDRESS || '0x0000000000000000000000000000000000000000',
-    EPOCH_RNG: process.env.VITE_EPOCH_RNG_ADDRESS || '0x0000000000000000000000000000000000000000',
-    MOCK_ETH: process.env.VITE_MOCK_ETH_ADDRESS || '0x0000000000000000000000000000000000000000',
-    MOCK_USDC: process.env.VITE_MOCK_USDC_ADDRESS || '0x0000000000000000000000000000000000000000',
+    GHOSTLOCK_INTENTS: import.meta.env.VITE_GHOSTLOCK_INTENTS_ADDRESS,
+    BATCH_SETTLEMENT: import.meta.env.VITE_BATCH_SETTLEMENT_ADDRESS,
+    EPOCH_RNG: import.meta.env.VITE_EPOCH_RNG_ADDRESS,
+    MOCK_ETH: import.meta.env.VITE_MOCK_ETH_ADDRESS,
+    MOCK_USDC: import.meta.env.VITE_MOCK_USDC_ADDRESS,
   },
   
   // API Configuration
   API: {
-    SOLVER_URL: process.env.VITE_SOLVER_API_URL || 'http://localhost:4000/api',
-    INDEXER_URL: process.env.VITE_INDEXER_URL || 'http://localhost:4000/indexer',
+    SOLVER_URL: import.meta.env.VITE_SOLVER_API_URL || 'http://localhost:4800/api',
+    INDEXER_URL: import.meta.env.VITE_INDEXER_URL || 'http://localhost:4800/indexer',
   },
   
   // Application Settings
@@ -58,8 +58,8 @@ export const MARKETS: Market[] = [
   {
     id: 0,
     name: 'ETH/USDC',
-    baseToken: CONFIG.CONTRACTS.MOCK_ETH,
-    quoteToken: CONFIG.CONTRACTS.MOCK_USDC,
+    baseToken: CONFIG.CONTRACTS.MOCK_ETH as string,
+    quoteToken: CONFIG.CONTRACTS.MOCK_USDC as string,
     baseSymbol: 'ETH',
     quoteSymbol: 'USDC',
     baseDecimals: 18,
@@ -69,7 +69,7 @@ export const MARKETS: Market[] = [
     id: 1,
     name: 'WBTC/USDC',
     baseToken: '0x0000000000000000000000000000000000000001',
-    quoteToken: CONFIG.CONTRACTS.MOCK_USDC,
+    quoteToken: CONFIG.CONTRACTS.MOCK_USDC as string,
     baseSymbol: 'WBTC',
     quoteSymbol: 'USDC',
     baseDecimals: 8,

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, {useState} from 'react'
 import { motion } from 'framer-motion'
 import { Shield, Lock, Zap, Eye, TrendingUp, Users, Code, Book, ExternalLink } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'

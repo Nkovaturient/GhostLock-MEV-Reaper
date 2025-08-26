@@ -78,23 +78,6 @@ router.get('/', (req, res) => {
   }
 })
 
-// GET /api/auctions/:id - Get specific auction
-router.get('/:id', (req, res) => {
-  try {
-    const { id } = req.params
-    const auction = mockAuctions.find(a => a.id === id)
-    
-    if (!auction) {
-      return res.status(404).json({ error: 'Auction not found' })
-    }
-    
-    res.json(auction)
-  } catch (error) {
-    console.error('Error fetching auction:', error)
-    res.status(500).json({ error: 'Failed to fetch auction data' })
-  }
-})
-
 // GET /api/auctions/stats - Get auction statistics
 router.get('/stats', (req, res) => {
   try {
@@ -115,6 +98,23 @@ router.get('/stats', (req, res) => {
   } catch (error) {
     console.error('Error calculating stats:', error)
     res.status(500).json({ error: 'Failed to calculate statistics' })
+  }
+})
+
+// GET /api/auctions/:id - Get specific auction
+router.get('/:id', (req, res) => {
+  try {
+    const { id } = req.params
+    const auction = mockAuctions.find(a => a.id === id)
+    
+    if (!auction) {
+      return res.status(404).json({ error: 'Auction not found' })
+    }
+    
+    res.json(auction)
+  } catch (error) {
+    console.error('Error fetching auction:', error)
+    res.status(500).json({ error: 'Failed to fetch auction data' })
   }
 })
 

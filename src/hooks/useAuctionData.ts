@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { CONFIG } from '@/lib/config'
+import { BlocklockService } from '@/lib/blocklock-service'
+import { useBlockNumber } from 'wagmi'
 
 export interface AuctionData {
   id: string
@@ -18,7 +20,7 @@ export interface AuctionData {
 
 export function useAuctionData() {
   return useQuery<AuctionData[]>({
-    queryKey: ['auctions'],
+    queryKey: [''],
     queryFn: async () => {
       try {
         const response = await fetch(`${CONFIG.API.SOLVER_URL}/auctions`, {

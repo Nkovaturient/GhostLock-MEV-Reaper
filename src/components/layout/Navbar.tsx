@@ -9,7 +9,6 @@ const navigation = [
   { name: 'Trade', href: '/trade', icon: Zap },
   { name: 'Auctions', href: '/auctions', icon: Activity },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
-  { name: 'Docs', href: '/docs', icon: FileText },
 ]
 
 export default function Navbar() {
