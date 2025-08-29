@@ -1,6 +1,6 @@
 const express = require('express')
 const cors = require('cors')
-const path = require('path')
+require('dotenv').config();
 
 const app = express()
 const PORT = process.env.PORT || 4800
@@ -14,10 +14,12 @@ app.use(express.urlencoded({ extended: true }))
 const auctionsRouter = require('./routes/auctions')
 const intentsRouter = require('./routes/intents')
 const marketsRouter = require('./routes/markets')
+const mevRouter = require('./routes/mev')
 
 app.use('/api/auctions', auctionsRouter)
 app.use('/api/intents', intentsRouter)
 app.use('/api/markets', marketsRouter)
+app.use('/api/mev', mevRouter)
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -43,8 +45,8 @@ app.use('*', (req, res) => {
 })
 
 app.listen(PORT, () => {
-  console.log(`GhostLock MEV Reaper API server running on http://localhost:${PORT}`)
-  console.log(` Health check: http://localhost:${PORT}/health`)
+  console.log(`server running on http://localhost:${PORT}`)
+  console.log(`Health check: http://localhost:${PORT}/health`)
 })
 
 module.exports = app

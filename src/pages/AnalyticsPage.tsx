@@ -1,81 +1,142 @@
-import React from 'react'
 import { motion } from 'framer-motion'
-import { TrendingUp, TrendingDown, Activity, DollarSign, Shield, Zap } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, DollarSign, Shield, Zap, RefreshCw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
-
-const metrics = [
-  {
-    title: 'Total Value Protected',
-    value: '$12.4M',
-    change: '+23.5%',
-    trend: 'up',
-    icon: Shield,
-    description: 'Cumulative value shielded from MEV'
-  },
-  {
-    title: 'MEV Savings',
-    value: '$847K',
-    change: '+18.2%',
-    trend: 'up',
-    icon: DollarSign,
-    description: 'Total MEV extraction prevented'
-  },
-  {
-    title: 'Success Rate',
-    value: '99.8%',
-    change: '+0.1%',
-    trend: 'up',
-    icon: Activity,
-    description: 'Intent execution success rate'
-  },
-  {
-    title: 'Avg Settlement Time',
-    value: '42s',
-    change: '-12.3%',
-    trend: 'down',
-    icon: Zap,
-    description: 'Average time to settlement'
-  }
-]
-
-const topMarkets = [
-  { market: 'ETH/USDC', volume: 8420000, share: 45.2, change: 12.5 },
-  { market: 'WBTC/USDC', volume: 4230000, share: 22.8, change: -3.2 },
-  { market: 'LINK/USDC', volume: 2840000, share: 15.3, change: 8.7 },
-  { market: 'UNI/USDC', volume: 1890000, share: 10.2, change: 15.3 },
-  { market: 'AAVE/USDC', volume: 1200000, share: 6.5, change: -5.1 }
-]
-
-const recentActivity = [
-  {
-    type: 'Settlement',
-    market: 'ETH/USDC',
-    amount: 125000,
-    price: 3120.52,
-    time: '2 min ago',
-    status: 'success'
-  },
-  {
-    type: 'Intent',
-    market: 'WBTC/USDC',
-    amount: 89000,
-    price: 64100.12,
-    time: '5 min ago',
-    status: 'pending'
-  },
-  {
-    type: 'Settlement',
-    market: 'LINK/USDC',
-    amount: 45000,
-    price: 15.67,
-    time: '8 min ago',
-    status: 'success'
-  }
-]
+import { useMarkets, useMarketStats, refreshMarketData } from '@/hooks/useMarketData'
+import { useState } from 'react'
+import MEVAnalytics from '@/components/analytics/MEVAnalytics'
 
 export default function AnalyticsPage() {
+  const { data: markets, isLoading: marketsLoading, error: marketsError } = useMarkets()
+  const { data: stats, isLoading: statsLoading, error: statsError } = useMarketStats()
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      await refreshMarketData()
+      // The queries will automatically refetch due to React Query's invalidation
+    } catch (error) {
+      console.error('Failed to refresh market data:', error)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
+  const isLoading = marketsLoading || statsLoading
+  const hasError = marketsError || statsError
+
+  // Prepare metrics from real data
+  const metrics = [
+    {
+      title: 'Total Value Protected',
+      value: stats ? formatCurrency(stats.totalValueProtected) : '—',
+      change: '+23.5%', // This could be calculated from historical data
+      trend: 'up' as const,
+      icon: Shield,
+      description: 'Cumulative value shielded from MEV'
+    },
+    {
+      title: 'MEV Savings',
+      value: stats ? formatCurrency(stats.mevSavings) : '—',
+      change: '+18.2%',
+      trend: 'up' as const,
+      icon: DollarSign,
+      description: 'Total MEV extraction prevented'
+    },
+    {
+      title: 'Success Rate',
+      value: stats ? `${stats.successRate.toFixed(1)}%` : '—',
+      change: '+0.1%',
+      trend: 'up' as const,
+      icon: Activity,
+      description: 'Intent execution success rate'
+    },
+    {
+      title: 'Avg Settlement Time',
+      value: stats ? `${Math.round(stats.avgSettlementTime / 1000)}s` : '—',
+      change: '-12.3%',
+      trend: 'down' as const,
+      icon: Zap,
+      description: 'Average time to settlement'
+    }
+  ]
+
+  // Prepare top markets from real data
+  const topMarkets = markets ? markets
+    .map(market => ({
+      market: market.name,
+      volume: market.volume24h,
+      share: markets.length > 0 ? (market.volume24h / markets.reduce((sum, m) => sum + m.volume24h, 0)) * 100 : 0,
+      change: market.change24h,
+      activeIntents: market.activeIntents,
+      settledIntents: market.settledIntents
+    }))
+    .sort((a, b) => b.volume - a.volume)
+    .slice(0, 5) : []
+
+  // Prepare recent activity from real data
+  const recentActivity = markets ? markets
+    .flatMap(market => [
+      {
+        type: 'Intent' as const,
+        market: market.name,
+        amount: market.activeIntents,
+        price: market.currentPrice,
+        time: 'Active',
+        status: 'pending' as const
+      },
+      {
+        type: 'Settlement' as const,
+        market: market.name,
+        amount: market.settledIntents,
+        price: market.currentPrice,
+        time: 'Settled',
+        status: 'success' as const
+      }
+    ])
+    .sort((a, b) => {
+      // Sort by activity type and then by amount
+      if (a.type !== b.type) return a.type === 'Settlement' ? -1 : 1
+      return b.amount - a.amount
+    })
+    .slice(0, 6) : []
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full" />
+            <span className="ml-3 text-ghost-400">Loading market analytics...</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (hasError) {
+    return (
+      <div className="min-h-screen py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <Activity className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-red-400 mb-2">Failed to Load Analytics</h2>
+            <p className="text-ghost-400 mb-4">Unable to fetch market data from the server</p>
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
+            >
+              {isRefreshing ? 'Refreshing...' : 'Retry'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -84,12 +145,24 @@ export default function AnalyticsPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="text-4xl font-bold gradient-text mb-4">
-            Analytics Dashboard
-          </h1>
-          <p className="text-ghost-300 text-lg">
-            Real-time insights into MEV protection and trading performance
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold gradient-text mb-4">
+                Analytics Dashboard
+              </h1>
+              <p className="text-ghost-300 text-lg">
+                Real-time insights into MEV protection and trading performance
+              </p>
+            </div>
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="flex items-center space-x-2 px-4 py-2 bg-ghost-700 text-white rounded-lg hover:bg-ghost-600 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+            </button>
+          </div>
         </motion.div>
 
         {/* Key Metrics */}
@@ -138,32 +211,42 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {topMarkets.map((market, index) => (
-                  <motion.div
-                    key={market.market}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className="flex items-center justify-between p-3 rounded-lg bg-ghost-800/30"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gradient-to-r from-primary-500 to-blue-500 rounded-full flex items-center justify-center text-xs font-bold">
-                        {index + 1}
-                      </div>
-                      <div>
-                        <div className="font-medium">{market.market}</div>
-                        <div className="text-sm text-ghost-400">
-                          {formatCurrency(market.volume)} • {market.share}%
+                {topMarkets.length > 0 ? (
+                  topMarkets.map((market, index) => (
+                    <motion.div
+                      key={market.market}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                      className="flex items-center justify-between p-3 rounded-lg bg-ghost-800/30"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-gradient-to-r from-primary-500 to-blue-500 rounded-full flex items-center justify-center text-xs font-bold">
+                          {index + 1}
+                        </div>
+                        <div>
+                          <div className="font-medium">{market.market}</div>
+                          <div className="text-sm text-ghost-400">
+                            {formatCurrency(market.volume)} • {market.share.toFixed(1)}%
+                          </div>
+                          <div className="text-xs text-ghost-500">
+                            {market.activeIntents} active, {market.settledIntents} settled
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className={`text-sm font-medium ${
-                      market.change >= 0 ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                      {formatPercentage(market.change)}
-                    </div>
-                  </motion.div>
-                ))}
+                      <div className={`text-sm font-medium ${
+                        market.change >= 0 ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        {formatPercentage(market.change)}
+                      </div>
+                    </motion.div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-ghost-400">
+                    <Activity className="w-8 h-8 mx-auto mb-2" />
+                    <p>No market data available</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -175,50 +258,44 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentActivity.map((activity, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className="flex items-center justify-between p-3 rounded-lg bg-ghost-800/30"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <Badge variant={activity.status === 'success' ? 'success' : 'warning'}>
-                        {activity.type}
-                      </Badge>
-                      <div>
-                        <div className="font-medium">{activity.market}</div>
-                        <div className="text-sm text-ghost-400">
-                          {formatCurrency(activity.amount)} @ {formatCurrency(activity.price)}
+                {recentActivity.length > 0 ? (
+                  recentActivity.map((activity, index) => (
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                      className="flex items-center justify-between p-3 rounded-lg bg-ghost-800/30"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <Badge variant={activity.status === 'success' ? 'success' : 'warning'}>
+                          {activity.type}
+                        </Badge>
+                        <div>
+                          <div className="font-medium">{activity.market}</div>
+                          <div className="text-sm text-ghost-400">
+                            {activity.amount} intents @ {formatCurrency(activity.price)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="text-sm text-ghost-400">
-                      {activity.time}
-                    </div>
-                  </motion.div>
-                ))}
+                      <div className="text-sm text-ghost-400">
+                        {activity.time}
+                      </div>
+                    </motion.div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-ghost-400">
+                    <Activity className="w-8 h-8 mx-auto mb-2" />
+                    <p>No recent activity</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Performance Chart Placeholder */}
-        <Card>
-          <CardHeader>
-            <CardTitle>MEV Protection Over Time</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64 flex items-center justify-center bg-ghost-800/30 rounded-lg">
-              <div className="text-center">
-                <Activity className="w-12 h-12 text-ghost-600 mx-auto mb-4" />
-                <p className="text-ghost-400">Chart visualization coming soon</p>
-                <p className="text-sm text-ghost-500">Real-time MEV protection metrics</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* MEV Analytics */}
+        <MEVAnalytics />
       </div>
     </div>
   )

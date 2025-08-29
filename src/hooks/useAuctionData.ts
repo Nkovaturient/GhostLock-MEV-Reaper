@@ -23,7 +23,7 @@ export function useAuctionData() {
     queryKey: [''],
     queryFn: async () => {
       try {
-        const response = await fetch(`${CONFIG.API.SOLVER_URL}/auctions`, {
+        const response = await fetch(`${CONFIG.API.SOLVER_URL}`, {
           cache: 'no-store'
         })
         
@@ -68,41 +68,16 @@ export function useAuctionData() {
         ]
       }
     },
-    refetchInterval: 10000, // Refetch every 10 seconds
-    staleTime: 5000, // Consider data stale after 5 seconds
+    refetchInterval: 60000 * 60000, // Refresh every 1hr
   })
 }
 
-export function useMarketStats() {
-  return useQuery({
-    queryKey: ['market-stats'],
-    queryFn: async () => {
-      try {
-        const response = await fetch(`${CONFIG.API.SOLVER_URL}/stats`)
-        if (!response.ok) throw new Error('Failed to fetch stats')
-        return await response.json()
-      } catch (error) {
-        console.error('Failed to fetch market stats:', error)
-        // Return mock stats for development
-        return {
-          totalValueProtected: 12400000,
-          mevSavings: 847000,
-          successRate: 99.8,
-          avgSettlementTime: 42,
-          activeTraders: 1247,
-          totalVolume24h: 2890000
-        }
-      }
-    },
-    refetchInterval: 30000, // Refetch every 30 seconds
-  })
-}
 
 export function useEpochInfo() {
   const { data: blockNumber } = useBlockNumber({ watch: true })
   
   return useQuery({
-    queryKey: ['epoch-info', blockNumber],
+    queryKey: ['epoch-info', blockNumber ? blockNumber.toString() : null],
     queryFn: () => {
       if (!blockNumber) return null
       
@@ -122,6 +97,6 @@ export function useEpochInfo() {
       }
     },
     enabled: !!blockNumber,
-    refetchInterval: 1000, // Update every second for real-time progress
+    refetchInterval: 60000 * 30000, // Refresh every 30min
   })
 }

@@ -1,13 +1,13 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Activity, Search, Filter, TrendingUp, Users, Clock, DollarSign } from 'lucide-react'
+import { Activity, Search, Filter, TrendingUp, Users, Clock, AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import { useAuctionData } from '@/hooks/useAuctionData'
-import { formatCurrency, formatNumber, formatTime } from '@/lib/utils'
+import { formatCurrency, formatNumber } from '@/lib/utils'
 
 const statusOptions = [
   { value: 'all', label: 'All Status' },

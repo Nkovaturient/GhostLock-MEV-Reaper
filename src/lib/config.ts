@@ -1,10 +1,6 @@
-// Configuration constants for GhostLock: MEV Reaper
 export const CONFIG = {
-  // Network Configuration
   CHAIN_ID: 84532, // Base Sepolia
   RPC_URL: import.meta.env.VITE_RPC_URL || 'https://sepolia.base.org',
-  
-  // Contract Addresses (Placeholders - Replace with actual deployed addresses)
   CONTRACTS: {
     GHOSTLOCK_INTENTS: import.meta.env.VITE_GHOSTLOCK_INTENTS_ADDRESS,
     BATCH_SETTLEMENT: import.meta.env.VITE_BATCH_SETTLEMENT_ADDRESS,
@@ -12,14 +8,10 @@ export const CONFIG = {
     MOCK_ETH: import.meta.env.VITE_MOCK_ETH_ADDRESS,
     MOCK_USDC: import.meta.env.VITE_MOCK_USDC_ADDRESS,
   },
-  
-  // API Configuration
   API: {
     SOLVER_URL: import.meta.env.VITE_SOLVER_API_URL || 'http://localhost:4800/api',
     INDEXER_URL: import.meta.env.VITE_INDEXER_URL || 'http://localhost:4800/indexer',
   },
-  
-  // Application Settings
   APP: {
     NAME: 'GhostLock: MEV Reaper',
     DESCRIPTION: 'A stealth shield against MEV, encrypting trades and settling them fair',

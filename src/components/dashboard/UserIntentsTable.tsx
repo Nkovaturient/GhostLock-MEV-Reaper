@@ -1,30 +1,37 @@
-import React, { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Eye, EyeOff, ExternalLink, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { Eye, EyeOff, ExternalLink, Clock, CheckCircle, AlertCircle, Shield } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import { useUserIntents, useDecryptIntent } from '@/hooks/useUserIntents'
 import { useEthersSigner } from '@/hooks/useEthers'
 import { formatIntentId, getIntentStatusColor } from '@/lib/blocklock-service'
-import { formatNumber, formatAddress } from '@/lib/utils'
+import { formatNumber } from '@/lib/utils'
+import { CONFIG } from '@/lib/config'
 
 export default function UserIntentsTable() {
-  const { data: intents, isLoading, error } = useUserIntents()
+  const { data: intents, isLoading, error, lastRequestId } = useUserIntents()
   const { decryptIntent } = useDecryptIntent()
-  const signer = useEthersSigner()
+  const chainId = CONFIG.CHAIN_ID;
+  const signer = useEthersSigner({chainId})
   const [decryptingIds, setDecryptingIds] = useState<Set<string>>(new Set())
+  const [autoDecrypt, setAutoDecrypt] = useState<boolean>(false)
 
   const handleDecrypt = async (intent: any) => {
     if (!signer) return
-    
-    setDecryptingIds(prev => new Set(prev).add(intent.id))
-    
+
+    setDecryptingIds((prev: Set<string>) => {
+      const next = new Set(prev)
+      next.add(intent.id)
+      return next
+    })
+
     try {
       const decrypted = await decryptIntent(
-        intent.encrypted,
         Number(intent.targetBlock),
-        signer
+        signer,
+        Number(intent.id)
       )
       
       if (decrypted) {
@@ -34,13 +41,30 @@ export default function UserIntentsTable() {
     } catch (error) {
       console.error('Decryption failed:', error)
     } finally {
-      setDecryptingIds(prev => {
+      setDecryptingIds((prev: Set<string>) => {
         const next = new Set(prev)
         next.delete(intent.id)
         return next
       })
     }
   }
+
+  // Auto-decrypt once when Ready, if user opted in
+  useEffect(() => {
+    if (!autoDecrypt || !signer || !intents) return
+    const readyUndecrypted = intents.filter(i => i.status === 'Ready' && !i.decrypted)
+    let cancelled = false
+    const run = async () => {
+      for (const i of readyUndecrypted) {
+        if (cancelled) break
+        try {
+          await handleDecrypt(i)
+        } catch {}
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [autoDecrypt, signer, intents])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -91,7 +115,15 @@ export default function UserIntentsTable() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Your Trading Intents</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle>Your Trading Intents</CardTitle>
+          <div className="flex items-center space-x-2">
+            <label className="flex items-center space-x-2 text-xs text-ghost-400">
+              <input type="checkbox" checked={autoDecrypt} onChange={(e) => setAutoDecrypt(e.target.checked)} />
+              <span>Auto-decrypt when Ready</span>
+            </label>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
@@ -116,9 +148,14 @@ export default function UserIntentsTable() {
                   className="border-b border-ghost-800 hover:bg-ghost-800/30 transition-colors"
                 >
                   <td className="py-4 px-4">
-                    <span className="font-mono text-primary-400">
-                      {formatIntentId(intent.id)}
-                    </span>
+                    <div className="flex flex-col">
+                      <span className="font-mono text-primary-400">
+                        {formatIntentId(intent.id)}
+                      </span>
+                      <span className="text-xs text-ghost-500">
+                        Blocklock #{intent.id}
+                      </span>
+                    </div>
                   </td>
                   
                   <td className="py-4 px-4">
@@ -131,7 +168,12 @@ export default function UserIntentsTable() {
                   </td>
                   
                   <td className="py-4 px-4">
-                    <span className="font-mono">{formatNumber(Number(intent.targetBlock))}</span>
+                    <div className="flex flex-col">
+                      <span className="font-mono">{formatNumber(Number(intent.targetBlock))}</span>
+                      <span className="text-xs text-ghost-500">
+                        Block {intent.inclusionBlock}
+                      </span>
+                    </div>
                   </td>
                   
                   <td className="py-4 px-4">
@@ -146,11 +188,15 @@ export default function UserIntentsTable() {
                   <td className="py-4 px-4">
                     {intent.decrypted ? (
                       <div className="text-xs space-y-1">
-                        <div>{intent.decrypted.side.toUpperCase()} {intent.decrypted.amount}</div>
+                        <div className="font-medium">{intent.decrypted.side.toUpperCase()} {intent.decrypted.amount}</div>
                         <div className="text-ghost-400">{intent.decrypted.market}</div>
+                        <div className="text-ghost-500">${Number(intent.decrypted.limitPrice).toFixed(2)}</div>
                       </div>
                     ) : (
-                      <span className="text-ghost-500 text-xs">Encrypted</span>
+                      <div className="text-xs">
+                        <span className="text-ghost-500">Encrypted</span>
+                        <div className="text-ghost-600">Use Request ID #{intent.id} to decrypt</div>
+                      </div>
                     )}
                   </td>
                   
@@ -173,9 +219,10 @@ export default function UserIntentsTable() {
                         size="sm"
                         variant="ghost"
                         className="text-xs"
-                        onClick={() => window.open(`https://sepolia.basescan.org/tx/${intent.id}`, '_blank')}
+                        onClick={() => window.open(`https://sepolia.basescan.org/address/${CONFIG.CONTRACTS.GHOSTLOCK_INTENTS}#readContract`, '_blank')}
                       >
                         <ExternalLink className="w-3 h-3" />
+                        Contract
                       </Button>
                     </div>
                   </td>
@@ -183,6 +230,18 @@ export default function UserIntentsTable() {
               ))}
             </tbody>
           </table>
+        </div>
+        
+        {/* Summary Info */}
+        <div className="mt-6 p-4 bg-ghost-800/30 rounded-lg border border-ghost-700">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-ghost-400">
+              Total Intents: <span className="text-white font-medium">{intents.length}</span>
+            </span>
+            <span className="text-ghost-400">
+              Latest Request ID: <span className="text-primary-400 font-mono">#{lastRequestId || 'N/A'}</span>
+            </span>
+          </div>
         </div>
       </CardContent>
     </Card>

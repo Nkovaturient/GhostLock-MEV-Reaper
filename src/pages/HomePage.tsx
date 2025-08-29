@@ -1,4 +1,3 @@
-import React from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Shield, Zap, Eye, Lock, TrendingUp, Users, ArrowRight, Github, Twitter, MessageCircle } from 'lucide-react'
@@ -75,12 +74,6 @@ export default function HomePage() {
                 <Button size="lg" className="w-full sm:w-auto">
                   Start Trading
                   <ArrowRight className="ml-2 w-5 h-5" />
-                </Button>
-              </Link>
-              
-              <Link to="/docs">
-                <Button variant="secondary" size="lg" className="w-full sm:w-auto">
-                  Learn More
                 </Button>
               </Link>
             </div>
@@ -258,9 +251,11 @@ export default function HomePage() {
               </Link>
               
               <div className="flex gap-4 justify-center">
+                <Link to={'https://github.com/Nkovaturient/GhostLock-MEV-Reaper'} target='_block'>
                 <Button variant="ghost" size="lg">
                   <Github className="w-5 h-5" />
                 </Button>
+                </Link>
                 <Button variant="ghost" size="lg">
                   <Twitter className="w-5 h-5" />
                 </Button>

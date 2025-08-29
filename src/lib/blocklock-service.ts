@@ -1,5 +1,6 @@
 import { ethers } from 'ethers'
 import { CONFIG, MARKETS } from './config'
+import { Blocklock } from 'blocklock-js'
 
 export interface IntentPayload {
   market: string
@@ -13,8 +14,12 @@ export interface IntentPayload {
 }
 
 export interface BlocklockCiphertext {
-  data: string
-  commitment: string
+  u: {
+    x: readonly [bigint, bigint]
+    y: readonly [bigint, bigint]
+  }
+  v: `0x${string}`
+  w: `0x${string}`
 }
 
 export class BlocklockService {
@@ -30,21 +35,16 @@ export class BlocklockService {
    * Encrypts a trading intent using blocklock-js
    * @param payload The intent payload to encrypt
    * @param unlockBlock The block number when decryption becomes available
-   * @returns Encrypted ciphertext ready for contract submission
+   * @returns Encrypted ciphertext structure ready for contract submission
    */
-  async encryptIntent(payload: IntentPayload, unlockBlock: number): Promise<string> {
+  async encryptIntent(payload: IntentPayload, unlockBlock: number): Promise<BlocklockCiphertext> {
     try {
-      // Import blocklock-js dynamically to handle potential loading issues
-      const blocklockModule = await import('blocklock-js')
-      const Blocklock = blocklockModule.Blocklock || blocklockModule.default?.Blocklock
-      
       if (!Blocklock) {
         throw new Error('Blocklock not available in blocklock-js module')
       }
 
-      // Create blocklock instance for the specific chain
       const blocklock = Blocklock.createFromChainId(this.signer, this.chainId)
-      
+
       // Encode the payload according to the contract's expected format
       const abiCoder = ethers.AbiCoder.defaultAbiCoder()
       const encodedPayload = abiCoder.encode(
@@ -58,23 +58,63 @@ export class BlocklockService {
           payload.epoch
         ]
       )
-      
+
       // Encrypt the payload with block-based condition
-      const ciphertext = await blocklock.encrypt(
+      const ciphertext = blocklock.encrypt(
         ethers.getBytes(encodedPayload),
         BigInt(unlockBlock)
       )
-      
-      // Handle different return formats from blocklock-js
-      if (typeof ciphertext === 'string') {
-        return ciphertext
-      } else if (ciphertext instanceof Uint8Array) {
-        return ethers.hexlify(ciphertext)
-      } else if (ciphertext && typeof ciphertext === 'object' && 'ciphertext' in ciphertext) {
-        return (ciphertext as any).ciphertext
-      } else {
-        throw new Error('Invalid ciphertext format from blocklock-js')
+      console.log(`ciphertext=`, ciphertext)
+
+      const normalizeBigint = (v: unknown): bigint => {
+        if (typeof v === 'bigint') return v
+        if (typeof v === 'number') return BigInt(v)
+        if (typeof v === 'string') return BigInt(v)
+        throw new Error('Invalid bigint-like value in ciphertext U')
       }
+
+      const vHex = (() => {
+        const v = (ciphertext as any).V ?? (ciphertext as any).v
+        if (v instanceof Uint8Array) return ethers.hexlify(v) as `0x${string}`
+        if (typeof v === 'string' && v.startsWith('0x')) return v as `0x${string}`
+        throw new Error('Invalid V in ciphertext')
+      })()
+
+      const wHex = (() => {
+        const w = (ciphertext as any).W ?? (ciphertext as any).w
+        if (w instanceof Uint8Array) return ethers.hexlify(w) as `0x${string}`
+        if (typeof w === 'string' && w.startsWith('0x')) return w as `0x${string}`
+        throw new Error('Invalid W in ciphertext')
+      })()
+
+      const U = (ciphertext as any).U ?? (ciphertext as any).u
+      const toPair = (p: unknown): readonly [bigint, bigint] => {
+        if (Array.isArray(p) && p.length === 2) {
+          return [normalizeBigint(p[0]), normalizeBigint(p[1])] as const
+        }
+        if (p && typeof p === 'object') {
+          const values = Object.values(p as Record<string, unknown>)
+          if (values.length >= 2) {
+            return [normalizeBigint(values[0]), normalizeBigint(values[1])] as const
+          }
+        }
+        throw new Error('Invalid U coordinate shape in ciphertext')
+      }
+
+      if (!U?.x || !U?.y) {
+        throw new Error('Invalid U in ciphertext')
+      }
+
+      const ciphertextStruct: BlocklockCiphertext = {
+        u: {
+          x: toPair(U.x),
+          y: toPair(U.y),
+        },
+        v: vHex,
+        w: wHex,
+      }
+
+      return ciphertextStruct
     } catch (error) {
       console.error('Blocklock encryption error:', error)
       throw new Error(`Failed to encrypt intent: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -84,47 +124,44 @@ export class BlocklockService {
   /**
    * Attempts to decrypt an intent if the current block allows it
    * @param ciphertext The encrypted intent data
-   * @param currentBlock The current block number
+   * @param decryptionKey To decrypt the content after attaining intended block height
    * @returns Decrypted payload or null if not yet decryptable
    */
-  async tryDecryptIntent(ciphertext: string, currentBlock: number): Promise<IntentPayload | null> {
+  async tryDecryptIntent(ciphertext: string, decryptionKey: string): Promise<IntentPayload | null> {
     try {
-      // Import blocklock-js dynamically
-      const blocklockModule = await import('blocklock-js')
-      const decrypt = blocklockModule.decrypt || blocklockModule.default?.decrypt
-      
-      if (!decrypt) {
+      const blocklock = Blocklock.createFromChainId(this.signer, this.chainId);
+
+      if (!blocklock) {
         console.warn('Decrypt function not available in blocklock-js')
         return null
       }
 
-      // Attempt decryption
-      const result = await decrypt({
-        ciphertext: ciphertext as `0x${string}`,
-        currentBlock: BigInt(currentBlock)
-      })
-      
-      let plaintext: Uint8Array | null = null
-      
-      // Handle different return formats
-      if (result instanceof Uint8Array) {
-        plaintext = result
-      } else if (typeof result === 'object' && result && 'plaintext' in result) {
-        plaintext = result.plaintext as Uint8Array
+      // Ensure ciphertext is in the correct format for blocklock-js
+      let formattedCiphertext: any = ciphertext;
+      if (typeof ciphertext === 'string' && ciphertext.startsWith('0x')) {
+        // Convert hex string to Uint8Array if required by blocklock-js
+        try {
+          formattedCiphertext = ethers.getBytes(ciphertext);
+        } catch {
+          console.log(`CipherText conversion failed!`);
+        }
       }
-      
-      if (!plaintext) return null
-      
+
+      const keyToBuffer = ethers.getBytes(decryptionKey)
+      const result = blocklock.decrypt(formattedCiphertext, keyToBuffer);
+
+      if (!result) return null
+
       // Decode the payload
       const abiCoder = ethers.AbiCoder.defaultAbiCoder()
       const decoded = abiCoder.decode(
         ['address', 'uint8', 'uint256', 'uint256', 'uint8', 'uint256'],
-        plaintext
+        result
       )
-      
+
       const marketId = Number(decoded[4])
       const market = MARKETS.find(m => m.id === marketId)
-      
+
       return {
         user: decoded[0],
         side: Number(decoded[1]) === 0 ? 'buy' : 'sell',
@@ -160,7 +197,7 @@ export class BlocklockService {
   private getTokenDecimals(marketId: number, tokenType: 'base' | 'quote'): number {
     const market = MARKETS.find(m => m.id === marketId)
     if (!market) return 18 // Default to 18 decimals
-    
+
     return tokenType === 'base' ? market.baseDecimals : market.quoteDecimals
   }
 

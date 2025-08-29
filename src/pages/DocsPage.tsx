@@ -1,8 +1,9 @@
-import React, {useState} from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Shield, Lock, Zap, Eye, TrendingUp, Users, Code, Book, ExternalLink } from 'lucide-react'
+import { Shield, Lock, Zap, Eye, TrendingUp, Users, Code, Book, ExternalLink, AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
 
 const sections = [
   {
@@ -149,11 +150,10 @@ export default function DocsPage() {
                     <button
                       key={section.id}
                       onClick={() => setActiveSection(section.id)}
-                      className={`w-full text-left p-3 rounded-lg transition-all duration-200 flex items-center space-x-3 ${
-                        activeSection === section.id
+                      className={`w-full text-left p-3 rounded-lg transition-all duration-200 flex items-center space-x-3 ${activeSection === section.id
                           ? 'bg-primary-500/20 text-primary-400'
                           : 'text-ghost-300 hover:bg-ghost-800 hover:text-white'
-                      }`}
+                        }`}
                     >
                       <section.icon className="w-4 h-4" />
                       <span>{section.title}</span>
@@ -182,14 +182,14 @@ export default function DocsPage() {
                   </CardHeader>
                   <CardContent className="prose prose-invert max-w-none">
                     <p className="text-ghost-300 leading-relaxed">
-                      GhostLock: MEV Reaper is a revolutionary trading platform designed to eliminate 
-                      Maximal Extractable Value (MEV) attacks through advanced cryptographic techniques 
-                      and fair ordering mechanisms. The platform ensures that all traders, regardless 
+                      GhostLock: MEV Reaper is a revolutionary trading platform designed to eliminate
+                      Maximal Extractable Value (MEV) attacks through advanced cryptographic techniques
+                      and fair ordering mechanisms. The platform ensures that all traders, regardless
                       of size, have equal access to fair pricing and execution.
                     </p>
-                    
+
                     <h3 className="text-xl font-semibold text-white mt-6 mb-4">Core Components</h3>
-                    
+
                     <div className="grid md:grid-cols-2 gap-4 not-prose">
                       {features.map((feature, index) => (
                         <motion.div
@@ -264,7 +264,7 @@ export default function DocsPage() {
                               {step.step}
                             </div>
                           </div>
-                          
+
                           <div className="flex-1">
                             <div className="flex items-center space-x-3 mb-2">
                               <step.icon className="w-5 h-5 text-primary-400" />
@@ -272,7 +272,7 @@ export default function DocsPage() {
                             </div>
                             <p className="text-ghost-300 leading-relaxed">{step.description}</p>
                           </div>
-                          
+
                           {index < 2 && (
                             <div className="absolute left-6 top-12 w-0.5 h-16 bg-gradient-to-b from-primary-500 to-transparent" />
                           )}
@@ -341,7 +341,7 @@ export default function DocsPage() {
                           <li>• Tamper-proof intent storage</li>
                         </ul>
                       </div>
-                      
+
                       <div className="space-y-4">
                         <h4 className="font-medium text-white">Fair Ordering</h4>
                         <ul className="space-y-2 text-sm text-ghost-300">

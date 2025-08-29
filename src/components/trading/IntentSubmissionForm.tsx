@@ -9,7 +9,7 @@ import Select from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { useIntentSubmission } from '@/hooks/useIntentSubmission'
 import { useEpochInfo } from '@/hooks/useAuctionData'
-import { MARKETS, CONFIG } from '@/lib/config'
+import { MARKETS } from '@/lib/config'
 import { formatNumber } from '@/lib/utils'
 
 const marketOptions = MARKETS.map(market => ({
@@ -17,45 +17,60 @@ const marketOptions = MARKETS.map(market => ({
   label: market.name
 }))
 
-const timeframeOptions = [
-  { value: '10', label: '10 blocks (~2 min)' },
-  { value: '20', label: '20 blocks (~4 min)' },
-  { value: '50', label: '50 blocks (~10 min)' },
-  { value: '100', label: '100 blocks (~20 min)' }
-]
-
-export default function IntentSubmissionForm() {
-  const { address, isConnected } = useAccount()
+export default function IntentSubmissionForm({
+  setBlocksAhead,
+  blocksAhead,
+  estimatedDecryptionTime,
+  avgBlockTimeSeconds
+}: {
+  setBlocksAhead: React.Dispatch<React.SetStateAction<string>>,
+  blocksAhead: string,
+  estimatedDecryptionTime: string,
+  avgBlockTimeSeconds?: number
+}) {
+  const { isConnected } = useAccount()
   const { data: blockNumber } = useBlockNumber({ watch: true })
   const { data: epochInfo } = useEpochInfo()
-  const { submitIntent, isSubmitting } = useIntentSubmission()
-  
+  const { submitIntent, isSubmitting, lastRequestId } = useIntentSubmission()
+
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
   const [marketId, setMarketId] = useState('0')
   const [amount, setAmount] = useState('')
   const [limitPrice, setLimitPrice] = useState('')
   const [slippageBps, setSlippageBps] = useState('50')
-  const [targetOffset, setTargetOffset] = useState('20')
 
   const currentBlock = blockNumber ? Number(blockNumber) : 0
-  const targetBlock = currentBlock + Number(targetOffset)
+  const targetBlock = currentBlock + Number(blocksAhead)
   const selectedMarket = MARKETS.find(m => m.id === Number(marketId))
 
-  // Auto-update limit price based on market (mock implementation)
+  const [unit, setUnit] = useState<'blocks' | 'seconds'>('blocks')
+  const [secondsAhead, setSecondsAhead] = useState('')
+
+  useEffect(() => {
+    if (unit === 'seconds') {
+      const spb = avgBlockTimeSeconds || 1
+      const secs = Number(secondsAhead)
+      if (!Number.isFinite(secs) || secs <= 0) return
+      const blocks = Math.max(1, Math.ceil(secs / spb))
+      setBlocksAhead(String(blocks))
+    }
+  }, [unit, secondsAhead, avgBlockTimeSeconds, setBlocksAhead])
+
+  // Auto-update limit price based on market
   useEffect(() => {
     if (selectedMarket && !limitPrice) {
-      // Mock market prices
-      const mockPrices: Record<string, string> = {
+      // Set default prices based on market
+      const defaultPrices: Record<string, string> = {
         'ETH/USDC': '3120.50',
         'WBTC/USDC': '64100.00'
       }
-      setLimitPrice(mockPrices[selectedMarket.name] || '1.00')
+      setLimitPrice(defaultPrices[selectedMarket.name] || '1.00')
     }
   }, [selectedMarket, limitPrice])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!isConnected || !selectedMarket) {
       return
     }
@@ -74,15 +89,12 @@ export default function IntentSubmissionForm() {
         marketId: Number(marketId),
         targetBlock
       })
-      
-      // Reset form on success
+
       setAmount('')
     } catch (error) {
       console.error('Submission failed:', error)
     }
   }
-
-  const estimatedExecutionTime = Number(targetOffset) * 12 // ~12 seconds per block
 
   return (
     <div className="grid lg:grid-cols-3 gap-8">
@@ -164,13 +176,57 @@ export default function IntentSubmissionForm() {
                 placeholder="50"
               />
 
-              {/* Target Offset */}
-              <Select
-                label="Execution Timeframe"
-                value={targetOffset}
-                onChange={(e) => setTargetOffset(e.target.value)}
-                options={timeframeOptions}
-              />
+              <div className="space-y-2">
+                <div className="flex space-x-2">
+                  <Button type="button" variant={unit === 'blocks' ? 'primary' : 'ghost'} onClick={() => setUnit('blocks')} className="flex-1">Blocks</Button>
+                  <Button type="button" variant={unit === 'seconds' ? 'primary' : 'ghost'} onClick={() => setUnit('seconds')} className="flex-1">Seconds</Button>
+                </div>
+                {unit === 'blocks' ? (
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    placeholder="Enter number of blocks ahead"
+                    value={blocksAhead}
+                    onChange={(e) => setBlocksAhead(e.target.value)}
+                    className="font-funnel-display w-full px-4 py-2 border border-gray-300 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    placeholder="Enter seconds until decryption"
+                    value={secondsAhead}
+                    onChange={(e) => setSecondsAhead(e.target.value)}
+                    className="font-funnel-display w-full px-4 py-2 border border-gray-300 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                )}
+                {unit === 'seconds' && avgBlockTimeSeconds && (
+                  <p className="text-xs text-ghost-500">≈ {blocksAhead} blocks @ ~{avgBlockTimeSeconds}s/block</p>
+                )}
+              </div>
+              {estimatedDecryptionTime && (
+                <p className="text-sm text-green-500 mt-2 font-funnel-display">
+                  Estimated decryption: {estimatedDecryptionTime}
+                </p>
+              )}
+
+
+              {/* Request ID Display */}
+              {lastRequestId && (
+                <div className="p-4 bg-primary-500/10 rounded-lg border border-primary-500/20">
+                  <div className="flex items-center space-x-2">
+                    <Shield className="w-4 h-4 text-primary-400" />
+                    <span className="text-sm font-medium text-primary-400">
+                      Blocklock Request ID: #{lastRequestId}
+                    </span>
+                  </div>
+                  <p className="text-xs text-ghost-400 mt-1">
+                    Use this ID to track decryption status
+                  </p>
+                </div>
+              )}
 
               {/* Execution Summary */}
               {amount && limitPrice && (
@@ -201,7 +257,7 @@ export default function IntentSubmissionForm() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-ghost-400">Est. Execution:</span>
-                      <span>~{Math.floor(estimatedExecutionTime / 60)}m {estimatedExecutionTime % 60}s</span>
+                      <span>{estimatedDecryptionTime}</span>
                     </div>
                   </div>
                 </motion.div>
@@ -215,8 +271,8 @@ export default function IntentSubmissionForm() {
                 disabled={!isConnected || !amount || !limitPrice}
                 className="w-full"
               >
-                {!isConnected 
-                  ? 'Connect Wallet to Continue' 
+                {!isConnected
+                  ? 'Connect Wallet to Continue'
                   : `Submit ${side.charAt(0).toUpperCase() + side.slice(1)} Intent`
                 }
               </Button>
@@ -243,11 +299,11 @@ export default function IntentSubmissionForm() {
               </div>
               <div className="flex justify-between">
                 <span className="text-ghost-400">Target Block:</span>
-                <span className="font-mono">{formatNumber(targetBlock)}</span>
+                <span className="font-mono">{formatNumber(currentBlock + Number(blocksAhead))}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-ghost-400">Est. Time:</span>
-                <span>~{Math.floor(estimatedExecutionTime / 60)}m {estimatedExecutionTime % 60}s</span>
+                <span>{estimatedDecryptionTime}</span>
               </div>
             </div>
           </CardContent>
@@ -266,23 +322,23 @@ export default function IntentSubmissionForm() {
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-ghost-400">Epoch:</span>
-                  <span className="font-mono">#{epochInfo.currentEpoch}</span>
+                  <span className="font-mono">#{epochInfo?.currentEpoch}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-ghost-400">Progress:</span>
-                  <span>{epochInfo.progressPercent.toFixed(1)}%</span>
+                  <span>{epochInfo?.progressPercent.toFixed(1)}%</span>
                 </div>
                 <div className="w-full bg-ghost-700 rounded-full h-2">
                   <motion.div
                     className="bg-gradient-to-r from-primary-500 to-blue-500 h-2 rounded-full"
                     initial={{ width: 0 }}
-                    animate={{ width: `${epochInfo.progressPercent}%` }}
+                    animate={{ width: `${epochInfo?.progressPercent}%` }}
                     transition={{ duration: 0.5 }}
                   />
                 </div>
                 <div className="flex justify-between text-xs text-ghost-400">
-                  <span>Block {epochInfo.epochStartBlock}</span>
-                  <span>Block {epochInfo.epochEndBlock}</span>
+                  <span>Block {epochInfo?.epochStartBlock}</span>
+                  <span>Block {epochInfo?.epochEndBlock}</span>
                 </div>
               </div>
             </CardContent>
@@ -303,7 +359,7 @@ export default function IntentSubmissionForm() {
                   <div className="text-sm text-ghost-400">Intent hidden until execution</div>
                 </div>
               </div>
-              
+
               <div className="flex items-center space-x-3">
                 <ArrowUpDown className="w-5 h-5 text-blue-400" />
                 <div>
@@ -311,7 +367,7 @@ export default function IntentSubmissionForm() {
                   <div className="text-sm text-ghost-400">Fair transaction sequencing</div>
                 </div>
               </div>
-              
+
               <div className="flex items-center space-x-3">
                 <Zap className="w-5 h-5 text-purple-400" />
                 <div>
@@ -358,7 +414,7 @@ export default function IntentSubmissionForm() {
               <div className="text-sm">
                 <p className="font-medium text-yellow-400 mb-1">Important Notice</p>
                 <p className="text-ghost-400">
-                  Your intent will be encrypted and only executable after the target block. 
+                  Your intent will be encrypted and only executable after the target block.
                   Ensure you have sufficient token balances for settlement.
                 </p>
               </div>

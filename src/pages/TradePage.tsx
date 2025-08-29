@@ -1,13 +1,88 @@
-import React from 'react'
 import { motion } from 'framer-motion'
 import { useAccount } from 'wagmi'
-import { Shield, AlertTriangle } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import IntentSubmissionForm from '@/components/trading/IntentSubmissionForm'
 import UserIntentsTable from '@/components/dashboard/UserIntentsTable'
 import { Card, CardContent } from '@/components/ui/Card'
+import { useEffect, useState } from 'react'
+import { useNetworkConfig } from '@/hooks/useNetworkConfig'
+import { useEthersProvider } from '@/hooks/useEthers'
 
 export default function TradePage() {
   const { isConnected } = useAccount()
+  const [blocksAhead, setBlocksAhead] = useState("");
+  const [estimatedDecryptionTime, setEstimatedDecryptionTime] = useState("");
+  // const signer = useEthersSigner();
+  const provider = useEthersProvider();
+  // const { chainId } = useAccount();
+  const { secondsPerBlock } = useNetworkConfig();
+  const [avgBlockTimeSeconds, setAvgBlockTimeSeconds] = useState<number | null>(null)
+
+  // Compute moving average block time from recent N blocks; fallback to config
+  useEffect(() => {
+    let cancelled = false
+    const N = 20
+    const compute = async () => {
+      if (!provider) return
+      try {
+        const latest = await provider.getBlockNumber();
+        const latestBlock = await provider.getBlock(latest);
+        const earlier = Math.max(0, latest - N);
+        const earlierBlock = await provider.getBlock(earlier);
+        if (!latestBlock || !earlierBlock) return
+        const dt = Number(latestBlock.timestamp) - Number(earlierBlock.timestamp)
+        const dn = latest - earlier
+        const avg = dn > 0 ? Math.max(1, Math.round(dt / dn)) : secondsPerBlock || 1
+        if (!cancelled) setAvgBlockTimeSeconds(avg)
+      } catch {}
+    }
+    compute()
+    const id = setInterval(compute, 15000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [provider, secondsPerBlock])
+
+  useEffect(() => {
+    const updateEstimate = async () => {
+      try {
+        const spb = avgBlockTimeSeconds || secondsPerBlock
+        if (!provider || !spb || !blocksAhead) {
+          setEstimatedDecryptionTime("");
+          return;
+        }
+        const currentBlock = await provider.getBlockNumber();
+        const currentBlockData = await provider.getBlock(currentBlock);
+        const currentTimestamp =
+          currentBlockData?.timestamp || Math.floor(Date.now() / 1000);
+
+        const blocks = Number(blocksAhead);
+        if (Number.isNaN(blocks) || blocks <= 0) {
+          setEstimatedDecryptionTime("");
+          return;
+        }
+
+        const targetTimestamp = currentTimestamp + blocks * spb;
+        const diffSeconds = Math.max(0, targetTimestamp - currentTimestamp);
+
+        const days = Math.floor(diffSeconds / 86400);
+        const hours = Math.floor((diffSeconds % 86400) / 3600);
+        const minutes = Math.floor((diffSeconds % 3600) / 60);
+        const seconds = Math.floor(diffSeconds % 60);
+
+        const parts: string[] = [];
+        if (days) parts.push(`${days}d`);
+        if (hours) parts.push(`${hours}h`);
+        if (minutes) parts.push(`${minutes}m`);
+        if (seconds || parts.length === 0) parts.push(`${seconds}s`);
+
+        const absolute = new Date(targetTimestamp * 1000).toLocaleString();
+        setEstimatedDecryptionTime(`in ~${parts.join(" ")} (≈ ${absolute})`);
+      } catch {
+        setEstimatedDecryptionTime("");
+      }
+    };
+
+    updateEstimate();
+  }, [provider, avgBlockTimeSeconds, secondsPerBlock, blocksAhead]);
 
   return (
     <div className="min-h-screen py-8">
@@ -50,7 +125,12 @@ export default function TradePage() {
 
         {/* Intent Submission Form */}
         <div className="mb-12">
-          <IntentSubmissionForm />
+          <IntentSubmissionForm
+            setBlocksAhead={setBlocksAhead}
+            blocksAhead={blocksAhead}
+            estimatedDecryptionTime={estimatedDecryptionTime}
+            avgBlockTimeSeconds={avgBlockTimeSeconds || secondsPerBlock}
+          />
         </div>
 
         {/* User Intents Table */}
