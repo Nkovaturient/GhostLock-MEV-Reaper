@@ -26,7 +26,7 @@ async function fetchMEVData() {
     await delay(RATE_LIMIT_DELAY)
     
     // Fetch recent MEV transactions-- 0x039dc7c4a5769ca80c9e5c0cee5c8b287faeb3af
-    const mevTransactionsResponse = await axios.get(`${ZEROMEV_API_BASE}/mevTransactions?address_from=&page=1`)
+    const mevTransactionsResponse = await axios.get(`${ZEROMEV_API_BASE}/mevTransactions?address_from=0x039dc7c4a5769ca80c9e5c0cee5c8b287faeb3af&page=1`)
     
     return {
       blocks: mevBlocksResponse.data,
