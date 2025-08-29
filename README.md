@@ -91,12 +91,12 @@ npm run server
 
 ## 📋 Smart Contract Deployment
 
-### **Deployed Contracts Addr on BaseSepolia Network**:
+### **Deployed Smart Contracts on BaseSepolia Network**:
 
-- GHOSTLOCK_INTENTS_ADDRESS= 0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C
-- BATCH_SETTLEMENT_ADDRESS= 0x8aF0Ec5b9a22d02acdC0fb3ad75831fef3208706
-- EPOCH_RNG_ADDRESS= 0xA785F4B588013C9761b6B2Dff025e058C42cb798
-- MOCK_ETH_ADDRESS= 0xE8901D9f2f262f4F09E30344aA8470eCEbc64CBD
+- [GHOSTLOCK_INTENTS_ADDRESS](https://sepolia.basescan.org/address/0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C)
+- [BATCH_SETTLEMENT_ADDRESS](https://sepolia.basescan.org/address/0x8aF0Ec5b9a22d02acdC0fb3ad75831fef3208706) 
+- [EPOCH_RNG_ADDRESS](https://sepolia.basescan.org/address/0xA785F4B588013C9761b6B2Dff025e058C42cb798) 
+- [MOCK_ETH_ADDRESS](https://sepolia.basescan.org/address/0xE8901D9f2f262f4F09E30344aA8470eCEbc64CBD) 
 
 ## 📖 API Documentation
 
@@ -117,24 +117,7 @@ npm run server
 - `GET /api/markets` - List all markets
 - `GET /api/markets/:id` - Get specific market
 - `GET /api/markets/stats` - Get market statistics
-
-## 🧪 Testing
-
-### Frontend Testing
-```bash
-npm run test
-```
-
-### Smart Contract Testing
-```bash
-cd contracts
-forge test
-```
-
-### Integration Testing
-```bash
-npm run test:integration
-```
+  
 
 ## 🔐 Security Considerations
 
