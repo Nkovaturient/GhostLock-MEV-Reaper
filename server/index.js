@@ -22,6 +22,10 @@ app.use('/api/markets', marketsRouter)
 app.use('/api/mev', mevRouter)
 
 // Health check endpoint
+app.get('/', (req, res) => {
+  res.send(`GhostLocking MEV! Lets play it fair & square.`)
+})
+
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
