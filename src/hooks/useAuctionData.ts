@@ -68,7 +68,7 @@ export function useAuctionData() {
         ]
       }
     },
-    refetchInterval: 60000 * 60000, // Refresh every 1hr
+    refetchInterval: 360000, // Refresh every 1hr
   })
 }
 
@@ -97,6 +97,6 @@ export function useEpochInfo() {
       }
     },
     enabled: !!blockNumber,
-    refetchInterval: 60000 * 30000, // Refresh every 30min
+    refetchInterval: 60000, 
   })
 }

@@ -9,8 +9,8 @@ export const CONFIG = {
     MOCK_USDC: import.meta.env.VITE_MOCK_USDC_ADDRESS,
   },
   API: {
-    SOLVER_URL: import.meta.env.VITE_SOLVER_API_URL || 'http://localhost:4800/api',
-    INDEXER_URL: import.meta.env.VITE_INDEXER_URL || 'http://localhost:4800/indexer',
+    SOLVER_URL: import.meta.env.VITE_SOLVER_API_URL as string,  // 'http://localhost:4800/api',
+    INDEXER_URL: import.meta.env.VITE_INDEXER_URL as string, // 'http://localhost:4800/indexer',
   },
   APP: {
     NAME: 'GhostLock: MEV Reaper',
