@@ -1,6 +1,7 @@
 # GhostLock: MEV Reaper
 
 A stealth shield against MEV, encrypting trades and settling them fair.
+### Live: [Demo](https://ghostlock.vercel.app/) 🟢
 
 ![GhostLock Banner](https://github.com/user-attachments/assets/8b445ad2-000e-404b-afeb-6e77991f677a)
 
@@ -83,56 +84,19 @@ npm run dev
 npm run server
 ```
 
-5. **Access the Application**
+5. **Access the Application locally**
 - Frontend: http://localhost:3000
-- Backend API: http://localhost:4000
-- Health Check: http://localhost:4000/health
+- Backend API: http://localhost:4800
+- Health Check: http://localhost:4800/health
 
 ## 📋 Smart Contract Deployment
 
-### Deploy Contracts (Foundry/Hardhat)
+### **Deployed Contracts Addr on BaseSepolia Network**:
 
-1. **Deploy dependencies first**:
-   - Deploy blocklock-solidity contracts
-   - Deploy randomness-solidity contracts
-
-2. **Deploy GhostLock contracts**:
-```bash
-# Deploy GhostLockIntents
-forge create GhostLockIntents --constructor-args <blocklock_sender_address>
-
-# Deploy EpochRNG  
-forge create GhostLockEpochRNG --constructor-args <randomness_sender> <owner>
-
-# Deploy BatchSettlement
-forge create GhostLockBatchSettlement --constructor-args <intents_address> <rng_address>
-
-# Deploy Mock Tokens (for testing)
-forge create MockToken --constructor-args "Mock ETH" "mETH" 1000000000000000000000000
-forge create MockToken --constructor-args "Mock USDC" "mUSDC" 1000000000000
-```
-
-3. **Update environment variables** with deployed addresses
-
-## 🔧 Configuration
-
-### Environment Variables
-
-#### Frontend (.env)
-```bash
-VITE_WALLETCONNECT_PROJECT_ID=your_project_id
-VITE_GHOSTLOCK_INTENTS_ADDRESS=0x...
-VITE_BATCH_SETTLEMENT_ADDRESS=0x...
-VITE_EPOCH_RNG_ADDRESS=0x...
-```
-
-#### Backend (server/.env)
-```bash
-PORT=4000
-RPC_URL=https://sepolia.base.org
-EXECUTOR_PRIVATE_KEY=0x...
-GHOSTLOCK_INTENTS_ADDRESS=0x...
-```
+- GHOSTLOCK_INTENTS_ADDRESS= 0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C
+- BATCH_SETTLEMENT_ADDRESS= 0x8aF0Ec5b9a22d02acdC0fb3ad75831fef3208706
+- EPOCH_RNG_ADDRESS= 0xA785F4B588013C9761b6B2Dff025e058C42cb798
+- MOCK_ETH_ADDRESS= 0xE8901D9f2f262f4F09E30344aA8470eCEbc64CBD
 
 ## 📖 API Documentation
 
@@ -149,7 +113,7 @@ GHOSTLOCK_INTENTS_ADDRESS=0x...
 - `GET /api/intents/:id` - Get specific intent
 - `POST /api/intents/:id/decrypt` - Decrypt ready intent
 
-#### Markets
+#### Markets[ZEROMEV API]
 - `GET /api/markets` - List all markets
 - `GET /api/markets/:id` - Get specific market
 - `GET /api/markets/stats` - Get market statistics
@@ -192,30 +156,6 @@ npm run test:integration
 - CORS configuration
 - Authentication for sensitive operations
 
-## 🚀 Deployment
-
-### Frontend Deployment (Vercel/Netlify)
-```bash
-npm run build
-# Deploy dist/ folder to your hosting provider
-```
-
-### Backend Deployment (Railway/Heroku)
-```bash
-cd server
-# Configure production environment variables
-# Deploy using your preferred platform
-```
-
-### Smart Contract Deployment
-```bash
-# Deploy to Base Sepolia
-forge script script/Deploy.s.sol --rpc-url $BASE_SEPOLIA_RPC --broadcast
-
-# Verify contracts
-forge verify-contract <contract_address> <contract_name> --chain base-sepolia
-```
-
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -241,6 +181,4 @@ forge verify-contract <contract_address> <contract_name> --chain base-sepolia
 - [Base](https://base.org) for the underlying blockchain infrastructure
 - [Drand](https://drand.love) for distributed randomness beacon
 
----
-
-**⚠️ Disclaimer**: Not yet audited for mainnet use.
+Happy building! 😄😊
