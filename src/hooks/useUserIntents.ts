@@ -5,7 +5,7 @@ import { GHOSTLOCK_INTENTS_ABI } from '@/lib/abis'
 import { CONFIG, MARKETS } from '@/lib/config'
 import { ethers } from 'ethers'
 import { Blocklock } from 'blocklock-js'
-const { markDecrypted } = await import('@/stores/requestIdStore')
+import { markDecrypted } from '@/stores/requestIdStore'
 
 export interface UserIntent {
   id: string
