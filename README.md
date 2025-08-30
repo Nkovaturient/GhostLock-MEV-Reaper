@@ -88,8 +88,8 @@ npm run server
    
 - Frontend: `http://localhost:3000`
 - Backend API: `http://localhost:4800`
-- Health Check: `http://localhost:4800/health`
-- Peak the server here 👀: `https://ghost-lock-mev-reaper.vercel.app/` (/health)
+- Health Check: [Preview](https://ghost-lock-mev-reaper.vercel.app/health)
+- Peak the server here 👀: [Preview](https://ghost-lock-mev-reaper.vercel.app/)
 
 ## 📋 Smart Contract Deployment
 
@@ -109,12 +109,6 @@ npm run server
 - `GET /api/auctions` - List all auctions
 - `GET /api/auctions/:id` - Get specific auction
 - `GET /api/auctions/stats` - Get auction statistics
-
-#### Intents  
-- `POST /api/intents/submit` - Submit new intent
-- `GET /api/intents/user/:address` - Get user intents
-- `GET /api/intents/:id` - Get specific intent
-- `POST /api/intents/:id/decrypt` - Decrypt ready intent
 
 #### Markets[ZEROMEV API]
 - `GET /api/markets` - List all markets
