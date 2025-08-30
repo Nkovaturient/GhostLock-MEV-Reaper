@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 
 const navigation = [
   { name: 'Trade', href: '/trade', icon: Zap },
-  { name: 'Auctions', href: '/auctions', icon: Activity },
+  { name: 'Batch Auctions', href: '/auctions', icon: Activity },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
 ]
 

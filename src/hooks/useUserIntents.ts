@@ -1,11 +1,10 @@
-import { useAccount, useReadContract, useBlockNumber, useReadContracts } from 'wagmi'
-import { useQuery} from '@tanstack/react-query'
-import { type IntentPayload } from '@/lib/blocklock-service'
+import { useAccount, useBlockNumber, useReadContracts, useWatchContractEvent } from 'wagmi'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { GHOSTLOCK_INTENTS_ABI } from '@/lib/abis'
 import { CONFIG, MARKETS } from '@/lib/config'
 import { ethers } from 'ethers'
-import { Blocklock } from 'blocklock-js'
 import { markDecrypted } from '@/stores/requestIdStore'
+import { useState } from 'react'
 
 export interface UserIntent {
   id: string
@@ -16,6 +15,19 @@ export interface UserIntent {
   inclusionBlock: string
   settlementPrice: string
   decrypted?: IntentPayload | null
+  isDecrypted: boolean
+  transactionHash?: string // Add transaction hash for verification
+}
+
+export interface IntentPayload {
+  market: string
+  side: 'buy' | 'sell'
+  amount: string
+  limitPrice: string
+  slippageBps: number
+  marketId: number
+  epoch: number
+  user: string
 }
 
 interface ContractIntent {
@@ -36,23 +48,48 @@ interface ContractIntent {
 
 export function useUserIntents() {
   const { address } = useAccount()
+  const queryClient = useQueryClient()
   
-  // Get the last request ID to know how many intents exist
-  const { data: lastRequestId, isLoading: isLoadingLastId, error: errorLastId } = useReadContract({
+  // Track the highest request ID we've seen from events
+  const [highestRequestId, setHighestRequestId] = useState<number>(0)
+  
+  // Listen for IntentSubmitted events to track new intents
+  useWatchContractEvent({
     chainId: CONFIG.CHAIN_ID,
     abi: GHOSTLOCK_INTENTS_ABI,
     address: CONFIG.CONTRACTS.GHOSTLOCK_INTENTS as `0x${string}`,
-    functionName: 'lastRequestId',
-    query: {
-      enabled: !!CONFIG.CONTRACTS.GHOSTLOCK_INTENTS,
-      refetchInterval: 60000, // Refresh every 1min
+    eventName: 'IntentSubmitted',
+    onLogs: (logs) => {
+      // Update the highest request ID when new intents are submitted
+      logs.forEach(log => {
+        const requestId = Number(log.args.requestId)
+        if (requestId > highestRequestId) {
+          setHighestRequestId(requestId)
+        }
+      })
+      // Refresh the intents data
+      queryClient.invalidateQueries({ queryKey: ['intents-transformed'] })
+      console.log('IntentSubmitted event received:', logs)
+    },
+  })
+
+  // Listen for IntentReady events to know when decryption is complete
+  useWatchContractEvent({
+    chainId: CONFIG.CHAIN_ID,
+    abi: GHOSTLOCK_INTENTS_ABI,
+    address: CONFIG.CONTRACTS.GHOSTLOCK_INTENTS as `0x${string}`,
+    eventName: 'IntentReady',
+    onLogs: (logs) => {
+      // Refresh the intents data when an intent is ready
+      queryClient.invalidateQueries({ queryKey: ['intents-transformed'] })
+      console.log('IntentReady event received:', logs)
     },
   })
 
   // Create contracts array for all intents (we'll limit to recent ones for performance)
   const maxIntentsToFetch = 50 // Limit to prevent too many contract calls
-  const startId = lastRequestId ? Math.max(0, Number(lastRequestId) - maxIntentsToFetch + 1) : 0
-  const endId = lastRequestId ? Number(lastRequestId) : 0
+  const startId = Math.max(0, highestRequestId - maxIntentsToFetch + 1)
+  const endId = highestRequestId
   
   const contracts = Array.from({ length: endId - startId + 1 }, (_, i) => ({
     chainId: CONFIG.CHAIN_ID,
@@ -73,7 +110,7 @@ export function useUserIntents() {
 
   // Transform the raw intent data to match our UserIntent interface
   const transformedIntents = useQuery({
-    queryKey: ['intents-transformed', lastRequestId, address],
+    queryKey: ['intents-transformed', highestRequestId, address],
     enabled: !!intentsData && intentsData.length > 0,
     queryFn: () => {
       if (!intentsData || !address) return []
@@ -108,14 +145,10 @@ export function useUserIntents() {
           if (contractIntent.requestedBy.toLowerCase() === address.toLowerCase()) {
             const encrypted = contractIntent.ct.v
             
-            // Determine status based on ready flag and decrypted data
-            let status: 'Pending' | 'Ready' | 'Settled' = 'Pending'
-            if (contractIntent.ready) {
-              status = contractIntent.decrypted && contractIntent.decrypted !== '0x' ? 'Settled' : 'Ready'
-            }
-            
-            // If contract has decrypted bytes, decode into structured payload
+            // Check if contract has decrypted bytes and decode into structured payload
+            let isDecrypted = false
             let decodedPayload: IntentPayload | null = null
+            
             if (contractIntent.decrypted && contractIntent.decrypted !== '0x') {
               try {
                 const abiCoder = ethers.AbiCoder.defaultAbiCoder()
@@ -135,6 +168,7 @@ export function useUserIntents() {
                   epoch: Number(decoded[5]),
                   market: market?.name || 'Unknown'
                 }
+                isDecrypted = true
               } catch (e) {
                 console.error(`Failed to decode decrypted payload for intent ${requestId}:`, e)
               }
@@ -145,10 +179,12 @@ export function useUserIntents() {
               user: contractIntent.requestedBy,
               targetBlock: contractIntent.unlockBlock.toString(),
               encrypted,
-              status,
+              status: contractIntent.ready ? 'Ready' : 'Pending',
               inclusionBlock: contractIntent.encryptedAt.toString(),
               settlementPrice: '0',
-              decrypted: decodedPayload
+              decrypted: decodedPayload,
+              isDecrypted,
+              transactionHash: undefined // TODO: Extract from contract events or logs
             })
           }
         } catch (error) {
@@ -163,15 +199,15 @@ export function useUserIntents() {
   })
 
   return {
-    isLoading: isLoadingLastId || isLoadingIntents || transformedIntents.isLoading,
-    error: errorLastId || errorIntents || transformedIntents.error,
+    isLoading: isLoadingIntents || transformedIntents.isLoading,
+    error: errorIntents || transformedIntents.error,
     data: transformedIntents.data ?? [],
-    lastRequestId: lastRequestId ? Number(lastRequestId) : null,
+    lastRequestId: highestRequestId,
   }
 }
 
 /**
- * Hook for decrypting a specific intent when user requests it
+ *  only for UI display
  */
 export function useDecryptIntent() {
   const { data: currentBlock } = useBlockNumber({ watch: true })
@@ -179,7 +215,7 @@ export function useDecryptIntent() {
 
   const decryptIntent = async (
     targetBlock: number,
-    signer: ethers.Signer,
+    _signer: ethers.Signer,
     requestId: number | string
   ): Promise<IntentPayload | null> => {
     if (!currentBlock || Number(currentBlock) < targetBlock) {
@@ -187,47 +223,14 @@ export function useDecryptIntent() {
     }
 
     try {
-     const chainId = CONFIG.CHAIN_ID
-      const blocklock = Blocklock.createFromChainId(signer, chainId)
-      const status = await blocklock.fetchBlocklockStatus(BigInt(requestId))
-
-      if (!status) {
-        throw new Error('Blocklock request still pending')
+      const chainId = CONFIG.CHAIN_ID
+      // Mark as decrypted locally for UI purposes
+      if (address) {
+        markDecrypted(chainId, address, Number(requestId))
       }
-
-      const decryptedBytes = await blocklock.decrypt(
-        status.ciphertext,
-        status.decryptionKey
-      )
-
-      // Decode using the same ABI layout as encryption
-      const abiCoder = ethers.AbiCoder.defaultAbiCoder()
-      const decoded = abiCoder.decode(
-        ['address', 'uint8', 'uint256', 'uint256', 'uint8', 'uint256'],
-        decryptedBytes
-      )
-
-      const marketId = Number(decoded[4])
-      const market = MARKETS.find(m => m.id === marketId)
-
-      const payload: IntentPayload = {
-        user: decoded[0],
-        side: Number(decoded[1]) === 0 ? 'buy' : 'sell',
-        amount: ethers.formatUnits(decoded[2], market?.baseDecimals ?? 18),
-        limitPrice: ethers.formatUnits(decoded[3], market?.quoteDecimals ?? 18),
-        slippageBps: 0,
-        marketId,
-        epoch: Number(decoded[5]),
-        market: market?.name || 'Unknown'
-      }
-      try {
-        if (address) {
-          markDecrypted(CONFIG.CHAIN_ID, address, Number(requestId))
-        }
-      } catch {}
-      return payload
+      return null
     } catch (error) {
-      console.error('Decryption failed:', error)
+      console.error('Mark as Decrypted:', error)
       return null
     }
   }

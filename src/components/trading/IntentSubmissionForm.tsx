@@ -11,6 +11,7 @@ import { useIntentSubmission } from '@/hooks/useIntentSubmission'
 import { useEpochInfo } from '@/hooks/useAuctionData'
 import { MARKETS } from '@/lib/config'
 import { formatNumber } from '@/lib/utils'
+import { ethers } from 'ethers'
 
 const marketOptions = MARKETS.map(market => ({
   value: market.id.toString(),
@@ -31,7 +32,7 @@ export default function IntentSubmissionForm({
   const { isConnected } = useAccount()
   const { data: blockNumber } = useBlockNumber({ watch: true })
   const { data: epochInfo } = useEpochInfo()
-  const { submitIntent, isSubmitting, lastRequestId } = useIntentSubmission()
+  const { submitIntent, isSubmitting, lastRequestId, lastTxHash, isConfirming, receipt } = useIntentSubmission()
 
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
   const [marketId, setMarketId] = useState('0')
@@ -421,6 +422,85 @@ export default function IntentSubmissionForm({
             </div>
           </CardContent>
         </Card>
+
+        {/* Transaction Hash Display */}
+        {lastTxHash && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Shield className="w-5 h-5 text-primary-400" />
+                <span>Transaction Submitted</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Transaction Hash */}
+                <div className="p-4 bg-ghost-800/50 rounded-lg border border-ghost-700">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium text-ghost-300 mb-1">
+                        Transaction Hash
+                      </div>
+                      <div className="font-mono text-sm text-primary-400 break-all">
+                        {lastTxHash}
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        const baseScanUrl = `https://sepolia.basescan.org/tx/${lastTxHash}`;
+                        window.open(baseScanUrl, '_blank');
+                      }}
+                      className="text-xs"
+                    >
+                      View on BaseScan
+                    </Button>
+                  </div>
+                </div>
+                </div>
+
+                {/* Transaction Status */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <div className={`w-3 h-3 rounded-full ${isConfirming ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'}`} />
+                    <span className="text-sm text-ghost-300">
+                      {isConfirming ? 'Confirming...' : 'Confirmed'}
+                    </span>
+                  </div>
+                  {receipt && (
+                    <Badge variant="success" className="text-xs">
+                      Block #{receipt.blockNumber?.toString()}
+                    </Badge>
+                  )}
+
+                {/* Intent Details */}
+                {receipt && (
+                  <div className="p-3 bg-ghost-800/30 rounded-lg">
+                    <div className="text-xs text-ghost-400 space-y-1">
+                      <div>Gas Used: {receipt.gasUsed?.toString() || 'N/A'}</div>
+                      <div>Effective Gas Price: {receipt.effectiveGasPrice ? ethers.formatUnits(receipt.effectiveGasPrice, 'gwei') + ' gwei' : 'N/A'}</div>
+                      <div>Status: {receipt?.status?.toUpperCase()}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Instructions */}
+                <div className="text-xs text-ghost-500 bg-ghost-800/20 p-3 rounded-lg">
+                  <p className="mb-2">
+                    <strong>Next Steps:</strong>
+                  </p>
+                  <ul className="space-y-1 list-disc list-inside">
+                    <li>Your intent is now encrypted and stored on-chain</li>
+                    <li>Decryption will happen automatically at block {targetBlock}</li>
+                    <li>Monitor the UserIntentsTable for status updates</li>
+                    <li>Use the transaction hash above to verify on BaseScan</li>
+                  </ul>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )

@@ -1,15 +1,17 @@
 import { motion } from 'framer-motion'
-import { TrendingUp, TrendingDown, Activity, DollarSign, Shield, Zap, RefreshCw } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, DollarSign, Shield, Zap, RefreshCw, CheckCircle, Clock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
 import { useMarkets, useMarketStats, refreshMarketData } from '@/hooks/useMarketData'
 import { useState } from 'react'
 import MEVAnalytics from '@/components/analytics/MEVAnalytics'
+import { useExplorer } from '@/hooks/useExplorer'
 
 export default function AnalyticsPage() {
   const { data: markets, isLoading: marketsLoading, error: marketsError } = useMarkets()
   const { data: stats, isLoading: statsLoading, error: statsError } = useMarketStats()
+  const { data: userIntents, isLoading: intentsLoading, error: intentsError, refetch: refetchIntents } = useExplorer()
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   const handleRefresh = async () => {
@@ -24,8 +26,8 @@ export default function AnalyticsPage() {
     }
   }
 
-  const isLoading = marketsLoading || statsLoading
-  const hasError = marketsError || statsError
+  const isLoading = marketsLoading || statsLoading || intentsLoading
+  const hasError = marketsError || statsError || intentsError
 
   // Prepare metrics from real data
   const metrics = [
@@ -75,33 +77,6 @@ export default function AnalyticsPage() {
     }))
     .sort((a, b) => b.volume - a.volume)
     .slice(0, 5) : []
-
-  // Prepare recent activity from real data
-  const recentActivity = markets ? markets
-    .flatMap(market => [
-      {
-        type: 'Intent' as const,
-        market: market.name,
-        amount: market.activeIntents,
-        price: market.currentPrice,
-        time: 'Active',
-        status: 'pending' as const
-      },
-      {
-        type: 'Settlement' as const,
-        market: market.name,
-        amount: market.settledIntents,
-        price: market.currentPrice,
-        time: 'Settled',
-        status: 'success' as const
-      }
-    ])
-    .sort((a, b) => {
-      // Sort by activity type and then by amount
-      if (a.type !== b.type) return a.type === 'Settlement' ? -1 : 1
-      return b.amount - a.amount
-    })
-    .slice(0, 6) : []
 
   if (isLoading) {
     return (
@@ -254,39 +229,63 @@ export default function AnalyticsPage() {
           {/* Recent Activity */}
           <Card>
             <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>Recent User Intents</CardTitle>
+                <button 
+                  onClick={() => refetchIntents?.()}
+                  disabled={intentsLoading}
+                  className="flex items-center space-x-2 px-3 py-1 bg-ghost-700 text-white rounded-lg hover:bg-ghost-600 disabled:opacity-50 text-sm"
+                >
+                  <RefreshCw className={`w-3 h-3 ${intentsLoading ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentActivity.length > 0 ? (
-                  recentActivity.map((activity, index) => (
+                {userIntents && userIntents.length > 0 ? (
+                  userIntents.slice(0, 6).map((intent, index) => (
                     <motion.div
-                      key={index}
+                      key={intent.id}
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.1 }}
                       className="flex items-center justify-between p-3 rounded-lg bg-ghost-800/30"
                     >
                       <div className="flex items-center space-x-3">
-                        <Badge variant={activity.status === 'success' ? 'success' : 'warning'}>
-                          {activity.type}
+                        <Badge variant={intent.message === 'Decrypted' ? 'success' : 'warning'}>
+                          {intent.message === 'Decrypted' ? 'Settled' : 'Pending'}
                         </Badge>
                         <div>
-                          <div className="font-medium">{activity.market}</div>
+                          <div className="font-medium">Intent #{intent.id}</div>
                           <div className="text-sm text-ghost-400">
-                            {activity.amount} intents @ {formatCurrency(activity.price)}
+                            {intent.message === 'Decrypted' ? 'Decrypted' : 'Encrypted'} • Block {intent.encryptedAt}
+                          </div>
+                          <div className="text-xs text-ghost-500">
+                            {intent.requestedBy.slice(0, 6)}...{intent.requestedBy.slice(-4)}
                           </div>
                         </div>
                       </div>
                       <div className="text-sm text-ghost-400">
-                        {activity.time}
+                        {intent.message === 'Decrypted' ? (
+                          <div className="flex items-center space-x-1">
+                            <CheckCircle className="w-3 h-3 text-green-400" />
+                            <span>Ready</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-1">
+                            <Clock className="w-3 h-3 text-yellow-400" />
+                            <span>Waiting</span>
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   ))
                 ) : (
                   <div className="text-center py-8 text-ghost-400">
                     <Activity className="w-8 h-8 mx-auto mb-2" />
-                    <p>No recent activity</p>
+                    <p>No user intents found</p>
+                    <p className="text-xs text-ghost-500 mt-1">Submit an intent to see it here</p>
                   </div>
                 )}
               </div>

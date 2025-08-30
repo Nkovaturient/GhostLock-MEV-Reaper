@@ -1,16 +1,22 @@
+// Debug environment variables
+console.log('Environment variables check:');
+console.log('VITE_GHOSTLOCK_INTENTS_ADDRESS:', import.meta.env.VITE_GHOSTLOCK_INTENTS_ADDRESS);
+console.log('VITE_RPC_URL:', import.meta.env.VITE_RPC_URL);
+console.log('All env vars:', import.meta.env);
+
 export const CONFIG = {
   CHAIN_ID: 84532, // Base Sepolia
   RPC_URL: import.meta.env.VITE_RPC_URL || 'https://sepolia.base.org',
   CONTRACTS: {
-    GHOSTLOCK_INTENTS: import.meta.env.VITE_GHOSTLOCK_INTENTS_ADDRESS,
-    BATCH_SETTLEMENT: import.meta.env.VITE_BATCH_SETTLEMENT_ADDRESS,
-    EPOCH_RNG: import.meta.env.VITE_EPOCH_RNG_ADDRESS,
-    MOCK_ETH: import.meta.env.VITE_MOCK_ETH_ADDRESS,
-    MOCK_USDC: import.meta.env.VITE_MOCK_USDC_ADDRESS,
+    GHOSTLOCK_INTENTS: import.meta.env.VITE_GHOSTLOCK_INTENTS_ADDRESS as string,
+    BATCH_SETTLEMENT: import.meta.env.VITE_BATCH_SETTLEMENT_ADDRESS as string,
+    EPOCH_RNG: import.meta.env.VITE_EPOCH_RNG_ADDRESS as string,
+    MOCK_ETH: import.meta.env.VITE_MOCK_ETH_ADDRESS as string,
+    MOCK_USDC: import.meta.env.VITE_MOCK_USDC_ADDRESS as string,
   },
   API: {
-    SOLVER_URL: import.meta.env.VITE_SOLVER_API_URL as string,  // 'http://localhost:4800/api',
-    INDEXER_URL: import.meta.env.VITE_INDEXER_URL as string, // 'http://localhost:4800/indexer',
+    SOLVER_URL: import.meta.env.VITE_SOLVER_API_URL as string,
+    INDEXER_URL: import.meta.env.VITE_INDEXER_URL as string,
   },
   APP: {
     NAME: 'GhostLock: MEV Reaper',

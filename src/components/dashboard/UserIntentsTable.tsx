@@ -1,88 +1,24 @@
-import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Eye, EyeOff, ExternalLink, Clock, CheckCircle, AlertCircle, Shield } from 'lucide-react'
+import { ExternalLink, CheckCircle, Clock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import Button from '@/components/ui/Button'
-import { useUserIntents, useDecryptIntent } from '@/hooks/useUserIntents'
-import { useEthersSigner } from '@/hooks/useEthers'
-import { formatIntentId, getIntentStatusColor } from '@/lib/blocklock-service'
+import { useUserIntents } from '@/hooks/useUserIntents'
+import { formatIntentId } from '@/lib/blocklock-service'
 import { formatNumber } from '@/lib/utils'
 import { CONFIG } from '@/lib/config'
+import Button from '../ui/Button'
 
 export default function UserIntentsTable() {
-  const { data: intents, isLoading, error, lastRequestId } = useUserIntents()
-  const { decryptIntent } = useDecryptIntent()
-  const chainId = CONFIG.CHAIN_ID;
-  const signer = useEthersSigner({chainId})
-  const [decryptingIds, setDecryptingIds] = useState<Set<string>>(new Set())
-  const [autoDecrypt, setAutoDecrypt] = useState<boolean>(false)
-
-  const handleDecrypt = async (intent: any) => {
-    if (!signer) return
-
-    setDecryptingIds((prev: Set<string>) => {
-      const next = new Set(prev)
-      next.add(intent.id)
-      return next
-    })
-
-    try {
-      const decrypted = await decryptIntent(
-        Number(intent.targetBlock),
-        signer,
-        Number(intent.id)
-      )
-      
-      if (decrypted) {
-        // Update the intent with decrypted data (in real app, this would trigger a refetch)
-        console.log('Decrypted intent:', decrypted)
-      }
-    } catch (error) {
-      console.error('Decryption failed:', error)
-    } finally {
-      setDecryptingIds((prev: Set<string>) => {
-        const next = new Set(prev)
-        next.delete(intent.id)
-        return next
-      })
-    }
-  }
-
-  // Auto-decrypt once when Ready, if user opted in
-  useEffect(() => {
-    if (!autoDecrypt || !signer || !intents) return
-    const readyUndecrypted = intents.filter(i => i.status === 'Ready' && !i.decrypted)
-    let cancelled = false
-    const run = async () => {
-      for (const i of readyUndecrypted) {
-        if (cancelled) break
-        try {
-          await handleDecrypt(i)
-        } catch {}
-      }
-    }
-    run()
-    return () => { cancelled = true }
-  }, [autoDecrypt, signer, intents])
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'Settled':
-        return <CheckCircle className="w-4 h-4 text-green-400" />
-      case 'Ready':
-        return <AlertCircle className="w-4 h-4 text-blue-400" />
-      default:
-        return <Clock className="w-4 h-4 text-yellow-400" />
-    }
-  }
+  const { data: intents, isLoading, error } = useUserIntents()
 
   if (isLoading) {
     return (
       <Card>
-        <CardContent className="p-8 text-center">
-          <div className="animate-spin w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-ghost-400">Loading your intents...</p>
+        <CardContent className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-400 mx-auto mb-4"></div>
+            <p className="text-ghost-400">Loading intents...</p>
+          </div>
         </CardContent>
       </Card>
     )
@@ -91,10 +27,11 @@ export default function UserIntentsTable() {
   if (error) {
     return (
       <Card>
-        <CardContent className="p-8 text-center">
-          <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-4" />
-          <p className="text-red-400">Failed to load intents</p>
-          <p className="text-ghost-400 text-sm mt-2">{String(error)}</p>
+        <CardContent className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <p className="text-red-400 mb-2">Error loading intents</p>
+            <p className="text-ghost-500 text-sm">{error.message}</p>
+          </div>
         </CardContent>
       </Card>
     )
@@ -103,10 +40,11 @@ export default function UserIntentsTable() {
   if (!intents || intents.length === 0) {
     return (
       <Card>
-        <CardContent className="p-8 text-center">
-          <Shield className="w-12 h-12 text-ghost-600 mx-auto mb-4" />
-          <p className="text-ghost-400 mb-2">No intents submitted yet</p>
-          <p className="text-ghost-500 text-sm">Submit your first encrypted trading intent to get started</p>
+        <CardContent className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <p className="text-ghost-400 mb-2">No intents found</p>
+            <p className="text-ghost-500 text-sm">Submit an intent to see it here</p>
+          </div>
         </CardContent>
       </Card>
     )
@@ -117,12 +55,6 @@ export default function UserIntentsTable() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>Your Trading Intents</CardTitle>
-          <div className="flex items-center space-x-2">
-            <label className="flex items-center space-x-2 text-xs text-ghost-400">
-              <input type="checkbox" checked={autoDecrypt} onChange={(e) => setAutoDecrypt(e.target.checked)} />
-              <span>Auto-decrypt when Ready</span>
-            </label>
-          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -135,6 +67,7 @@ export default function UserIntentsTable() {
                 <th className="text-left py-3 px-4 text-ghost-400 font-medium">Target Block</th>
                 <th className="text-left py-3 px-4 text-ghost-400 font-medium">Settlement Price</th>
                 <th className="text-left py-3 px-4 text-ghost-400 font-medium">Details</th>
+                <th className="text-left py-3 px-4 text-ghost-400 font-medium">Transaction</th>
                 <th className="text-left py-3 px-4 text-ghost-400 font-medium">Actions</th>
               </tr>
             </thead>
@@ -160,9 +93,13 @@ export default function UserIntentsTable() {
                   
                   <td className="py-4 px-4">
                     <div className="flex items-center space-x-2">
-                      {getStatusIcon(intent.status)}
-                      <Badge variant={getIntentStatusColor(intent.status) as any}>
-                        {intent.status}
+                      {intent.isDecrypted ? (
+                        <CheckCircle className="w-4 h-4 text-green-400" />
+                      ) : (
+                        <Clock className="w-4 h-4 text-yellow-400" />
+                      )}
+                      <Badge variant={intent.isDecrypted ? 'success' : 'warning'}>
+                        {intent.isDecrypted ? 'Decrypted' : 'Encrypted'}
                       </Badge>
                     </div>
                   </td>
@@ -195,26 +132,35 @@ export default function UserIntentsTable() {
                     ) : (
                       <div className="text-xs">
                         <span className="text-ghost-500">Encrypted</span>
-                        <div className="text-ghost-600">Use Request ID #{intent.id} to decrypt</div>
+                        <div className="text-ghost-600">Decryption at block {intent.targetBlock}</div>
                       </div>
                     )}
                   </td>
                   
                   <td className="py-4 px-4">
+                    <div className="flex flex-col">
+                      <span className="font-mono text-primary-400">
+                        {intent.transactionHash ? (
+                          <a
+                            href={`https://sepolia.basescan.org/tx/${intent.transactionHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline hover:text-primary-300"
+                          >
+                            {formatIntentId(intent.id)}
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </span>
+                      <span className="text-xs text-ghost-500">
+                        {intent.transactionHash ? 'View on BaseScan' : 'Pending Transaction'}
+                      </span>
+                    </div>
+                  </td>
+                  
+                  <td className="py-4 px-4">
                     <div className="flex items-center space-x-2">
-                      {intent.status === 'Ready' && !intent.decrypted && signer && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDecrypt(intent)}
-                          loading={decryptingIds.has(intent.id)}
-                          className="text-xs"
-                        >
-                          {intent.decrypted ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                          Decrypt
-                        </Button>
-                      )}
-                      
                       <Button
                         size="sm"
                         variant="ghost"
@@ -239,7 +185,11 @@ export default function UserIntentsTable() {
               Total Intents: <span className="text-white font-medium">{intents.length}</span>
             </span>
             <span className="text-ghost-400">
-              Latest Request ID: <span className="text-primary-400 font-mono">#{lastRequestId || 'N/A'}</span>
+              {intents.length > 0 ? (
+                <>Latest Intent: <span className="text-primary-400 font-mono">#{intents[0]?.id || 'N/A'}</span></>
+              ) : (
+                <span className="text-ghost-500">No intents submitted yet</span>
+              )}
             </span>
           </div>
         </div>
