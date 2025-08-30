@@ -85,14 +85,17 @@ npm run server
 ```
 
 5. **Access the Application locally**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:4800
-- Health Check: http://localhost:4800/health
+   
+- Frontend: `http://localhost:3000`
+- Backend API: `http://localhost:4800`
+- Health Check: `http://localhost:4800/health`
+- Peak the server here 👀: `https://ghost-lock-mev-reaper.vercel.app/` (/health)
 
 ## 📋 Smart Contract Deployment
 
 ### **Deployed Smart Contracts on BaseSepolia Network**:
 
+- [BaseSepolia Faucets](https://www.alchemy.com/faucets/base-sepolia)
 - [GHOSTLOCK_INTENTS_ADDRESS](https://sepolia.basescan.org/address/0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C)
 - [BATCH_SETTLEMENT_ADDRESS](https://sepolia.basescan.org/address/0x8aF0Ec5b9a22d02acdC0fb3ad75831fef3208706) 
 - [EPOCH_RNG_ADDRESS](https://sepolia.basescan.org/address/0xA785F4B588013C9761b6B2Dff025e058C42cb798) 
@@ -119,25 +122,14 @@ npm run server
 - `GET /api/markets/stats` - Get market statistics
   
 
-## 🔐 Security Considerations
+## Future Roadmap
 
-### Smart Contract Security
-- All contracts audited for common vulnerabilities
-- Reentrancy protection on all state-changing functions
-- Access control for administrative functions
-- Emergency pause mechanisms
-
-### Frontend Security
-- Input validation and sanitization
-- Secure key management practices
-- HTTPS enforcement in production
-- Content Security Policy headers
-
-### API Security
-- Rate limiting on all endpoints
-- Input validation and sanitization
-- CORS configuration
-- Authentication for sensitive operations
+- **On-chain verified randomness Intefrations** → Calling the Drand( VRF) verification baked directly into EpochRNG contracts, so ordering proofs are trustless.
+- **Batch-Auctions Settlemets** → via AI enhanced regulations
+- **Liveness guarantees** → Bond + slashing for missed reveals, fallback threshold revealers, and permissionless settlement calls so no one can grief the auction.
+- **Privacy hardening** → Add ciphertext(intent) padding, dummy intents, and batch-only publication so metadata leakage doesn’t kill the whole “encrypted” vibe.
+- **Tests & security** → Foundry fuzz, audits, invariant checks
+- **UI polish** → countdowns, public view mode, better status UX
 
 ## 🤝 Contributing
 
@@ -159,6 +151,7 @@ npm run server
 
 ##  Acknowledgments
 
+- [Dcipher Network](https://docs.dcipher.network/quickstart/blocklock/) upholding the permissionless threshold signing network
 - [Blocklock Protocol](https://github.com/randa-mu/blocklock-solidity) for time-locked encryption
 - [Randomness Protocol](https://github.com/randa-mu/randomness-solidity) for VRF implementation
 - [Base](https://base.org) for the underlying blockchain infrastructure
