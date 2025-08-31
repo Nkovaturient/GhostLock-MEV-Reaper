@@ -1,15 +1,19 @@
 # GhostLock: MEV Reaper
 
 A stealth shield against MEV, encrypting trades and settling them fair.
-### Live: [Preview](https://ghostlock.vercel.app/) 🟢
-### Youtube: [Demo](https://youtu.be/plceuO9AG8c) 🎥
-### Blog: [Hashnode](https://randomticks.hashnode.dev/ghostlock-mev-reaper) 📝
 
-![GhostLock Banner](https://github.com/user-attachments/assets/8b445ad2-000e-404b-afeb-6e77991f677a)
+### Glance
+- **Live:** [Preview](https://ghostlock.vercel.app/) 🟢
+- **Youtube:** [Demo](https://youtu.be/plceuO9AG8c) 🎥
+- **Blog:** [Hashnode](https://randomticks.hashnode.dev/ghostlock-mev-reaper) 📝
+
+<img width="1500" height="600" alt="ChatGPT Image Aug 30, 2025, 09_57_54 PM" src="https://github.com/user-attachments/assets/71315e2c-3956-495f-8739-fa2d08d45ac0" />
 
 ## 🛡️ Overview
 
 GhostLock: MEV Reaper is a cutting-edge DeFi platform that protects traders from Maximal Extractable Value (MEV) attacks through advanced cryptographic techniques and fair ordering mechanisms. Built on Base Sepolia, it leverages blocklock encryption, VRF-based ordering, and AI-optimized batch auctions.
+
+![GhostLock Banner](https://github.com/user-attachments/assets/8b445ad2-000e-404b-afeb-6e77991f677a)
 
 ## ✨ Key Features
 
@@ -44,7 +48,7 @@ GhostLock: MEV Reaper is a cutting-edge DeFi platform that protects traders from
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+ and npm/yarn
+- Node.js 18+ and npm
 - Git
 - MetaMask or compatible Web3 wallet
 
