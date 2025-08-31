@@ -227,11 +227,7 @@ export function useNetworkStats() {
 
 // Manual refresh function for when user explicitly wants fresh data
 export function refreshBlockchainData() {
-  // Clear all caches
   sessionStorage.removeItem(BLOCKCHAIN_DATA_KEY)
   sessionStorage.removeItem(GAS_PRICES_KEY)
   sessionStorage.removeItem(NETWORK_STATS_KEY)
-  
-  // Force refetch by invalidating queries
-  // This will be called from the UI when user clicks refresh
 }

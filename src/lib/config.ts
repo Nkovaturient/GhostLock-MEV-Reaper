@@ -1,9 +1,3 @@
-// Debug environment variables
-console.log('Environment variables check:');
-console.log('VITE_GHOSTLOCK_INTENTS_ADDRESS:', import.meta.env.VITE_GHOSTLOCK_INTENTS_ADDRESS);
-console.log('VITE_RPC_URL:', import.meta.env.VITE_RPC_URL);
-console.log('All env vars:', import.meta.env);
-
 export const CONFIG = {
   CHAIN_ID: 84532, // Base Sepolia
   RPC_URL: import.meta.env.VITE_RPC_URL || 'https://sepolia.base.org',
