@@ -256,12 +256,16 @@ export default function HomePage() {
                   <Github className="w-5 h-5" />
                 </Button>
                 </Link>
+                <Link to={'https://x.com/RandamuInc'} target='_block'>
                 <Button variant="ghost" size="lg">
                   <Twitter className="w-5 h-5" />
                 </Button>
+                </Link>
+                <Link to={'https://docs.dcipher.network/'} target='_block'>
                 <Button variant="ghost" size="lg">
-                  <MessageCircle className="w-5 h-5" />
+                <MessageCircle className="w-5 h-5" />
                 </Button>
+                </Link>
               </div>
             </div>
           </motion.div>

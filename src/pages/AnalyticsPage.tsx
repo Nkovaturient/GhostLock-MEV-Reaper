@@ -1,9 +1,11 @@
 import { motion } from 'framer-motion'
-import { TrendingUp, TrendingDown, Activity, DollarSign, Shield, Zap, RefreshCw, CheckCircle, Clock } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, DollarSign, Fuel, Shield, Network, RefreshCw, CheckCircle, Clock, Globe } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
 import { useMarkets, useMarketStats, refreshMarketData } from '@/hooks/useMarketData'
+import { useBlockchainData, useGasPrices, useNetworkStats, refreshBlockchainData } from '@/hooks/useBlockchainData'
+import { useCryptoData, useDefiData, useGasData, useExternalMEVData, refreshExternalData } from '@/hooks/useExternalData'
 import { useState } from 'react'
 import MEVAnalytics from '@/components/analytics/MEVAnalytics'
 import { useExplorer } from '@/hooks/useExplorer'
@@ -12,70 +14,117 @@ export default function AnalyticsPage() {
   const { data: markets, isLoading: marketsLoading, error: marketsError } = useMarkets()
   const { data: stats, isLoading: statsLoading, error: statsError } = useMarketStats()
   const { data: userIntents, isLoading: intentsLoading, error: intentsError, refetch: refetchIntents } = useExplorer()
+  
+  // External data hooks
+  const { data: cryptoData, isLoading: cryptoLoading } = useCryptoData()
+  const { data: defiData, isLoading: defiLoading } = useDefiData()
+  const { data: externalMEVData, isLoading: externalMEVLoading } = useExternalMEVData()
+  
+  // Blockchain data hooks - only load when needed
+  const { data: blockchainData, isLoading: blockchainLoading } = useBlockchainData()
+  const { data: gasPrices, isLoading: gasPricesLoading } = useGasPrices()
+  const { data: networkStats, isLoading: networkStatsLoading } = useNetworkStats()
+  
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [showBlockchainData, setShowBlockchainData] = useState(false)
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
     try {
-      await refreshMarketData()
+      await Promise.all([
+        refreshMarketData(),
+        refreshExternalData()
+      ])
+      
+      // If blockchain data is enabled, also refresh it
+      if (showBlockchainData) {
+        refreshBlockchainData()
+      }
+      
       // The queries will automatically refetch due to React Query's invalidation
     } catch (error) {
-      console.error('Failed to refresh market data:', error)
+      console.error('Failed to refresh data:', error)
     } finally {
       setIsRefreshing(false)
     }
   }
 
-  const isLoading = marketsLoading || statsLoading || intentsLoading
+  const isLoading = marketsLoading || statsLoading || intentsLoading || cryptoLoading || defiLoading || externalMEVLoading || (showBlockchainData && (blockchainLoading || gasPricesLoading || networkStatsLoading))
   const hasError = marketsError || statsError || intentsError
 
-  // Prepare metrics from real data
+  // Prepare metrics from real data with external API integration
   const metrics = [
     {
       title: 'Total Value Protected',
       value: stats ? formatCurrency(stats.totalValueProtected) : '—',
-      change: '+23.5%', // This could be calculated from historical data
-      trend: 'up' as const,
+      change: stats ? `${stats.totalValueProtected > 0 ? '+' : ''}${((stats.totalValueProtected / 1000000) * 100).toFixed(1)}%` : '—',
+      trend: stats && stats.totalValueProtected > 0 ? 'up' as const : 'down' as const,
       icon: Shield,
-      description: 'Cumulative value shielded from MEV'
+      description: 'Cumulative value shielded from MEV',
+      color: 'text-blue-400'
     },
     {
       title: 'MEV Savings',
-      value: stats ? formatCurrency(stats.mevSavings) : '—',
-      change: '+18.2%',
-      trend: 'up' as const,
+      value: externalMEVData ? formatCurrency(externalMEVData.totalMEV) : (stats ? formatCurrency(stats.mevSavings) : '—'),
+      change: externalMEVData ? `${externalMEVData.totalMEV > 0 ? '+' : ''}${((externalMEVData.totalMEV / 1000) * 100).toFixed(1)}%` : (stats ? `${stats.mevSavings > 0 ? '+' : ''}${((stats.mevSavings / 1000) * 100).toFixed(1)}%` : '—'),
+      trend: (externalMEVData && externalMEVData.totalMEV > 0) || (stats && stats.mevSavings > 0) ? 'up' as const : 'down' as const,
       icon: DollarSign,
-      description: 'Total MEV extraction prevented'
+      description: 'Total MEV extraction prevented',
+      color: 'text-green-400'
     },
     {
       title: 'Success Rate',
       value: stats ? `${stats.successRate.toFixed(1)}%` : '—',
-      change: '+0.1%',
-      trend: 'up' as const,
+      change: stats ? `${stats.successRate > 50 ? '+' : ''}${(stats.successRate - 50).toFixed(1)}%` : '—',
+      trend: stats && stats.successRate > 50 ? 'up' as const : 'down' as const,
       icon: Activity,
-      description: 'Intent execution success rate'
+      description: 'Intent execution success rate',
+      color: 'text-purple-400'
     },
     {
-      title: 'Avg Settlement Time',
-      value: stats ? `${Math.round(stats.avgSettlementTime / 1000)}s` : '—',
-      change: '-12.3%',
-      trend: 'down' as const,
-      icon: Zap,
-      description: 'Average time to settlement'
+      title: 'Network Congestion',
+      value: networkStats ? networkStats.congestionLevel : '—',
+      change: networkStats ? `${networkStats.baseFee} gwei` : '—',
+      trend: networkStats && networkStats.congestionLevel === 'Low' ? 'down' as const : 'up' as const,
+      icon: Network,
+      description: 'Current network status',
+      color: networkStats ? (networkStats.congestionLevel === 'Low' ? 'text-green-400' : networkStats.congestionLevel === 'Medium' ? 'text-yellow-400' : 'text-red-400') : 'text-gray-400'
     }
   ]
 
-  // Prepare top markets from real data
+  // Prepare top markets from real data with external price integration
   const topMarkets = markets ? markets
-    .map(market => ({
-      market: market.name,
-      volume: market.volume24h,
-      share: markets.length > 0 ? (market.volume24h / markets.reduce((sum, m) => sum + m.volume24h, 0)) * 100 : 0,
-      change: market.change24h,
-      activeIntents: market.activeIntents,
-      settledIntents: market.settledIntents
-    }))
+    .map(market => {
+      // Get real-time price data for the market
+      let currentPrice = market.currentPrice
+      let change24h = market.change24h
+      
+      if (cryptoData) {
+        if (market.baseSymbol === 'ETH') {
+          currentPrice = cryptoData.ethereum.price
+          change24h = cryptoData.ethereum.change24h
+        } else if (market.baseSymbol === 'WBTC') {
+          currentPrice = cryptoData.wbtc.price
+          change24h = cryptoData.wbtc.change24h
+        }
+      }
+      
+      return {
+        market: market.name,
+        currentPrice,
+        volume: market.volume24h,
+        share: markets.length > 0 ? (market.volume24h / markets.reduce((sum, m) => sum + m.volume24h, 0)) * 100 : 0,
+        change: change24h,
+        activeIntents: market.activeIntents,
+        settledIntents: market.settledIntents
+      }
+    })
     .sort((a, b) => b.volume - a.volume)
+    .slice(0, 5) : []
+
+  // Prepare DeFi protocols data
+  const topDefiProtocols = defiData ? defiData
+    .sort((a, b) => b.tvl - a.tvl)
     .slice(0, 5) : []
 
   if (isLoading) {
@@ -84,7 +133,7 @@ export default function AnalyticsPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full" />
-            <span className="ml-3 text-ghost-400">Loading market analytics...</span>
+            <span className="ml-3 text-ghost-400">Loading real-time analytics...</span>
           </div>
         </div>
       </div>
@@ -126,17 +175,53 @@ export default function AnalyticsPage() {
                 Analytics Dashboard
               </h1>
               <p className="text-ghost-300 text-lg">
-                Real-time insights into MEV protection and trading performance
+                Real-time insights from Etherscan APIs and blockchain data
               </p>
+              {showBlockchainData && blockchainData && (
+                <div className="mt-2">
+                  <p className="text-sm text-ghost-400">
+                    Current Block: {blockchainData.currentBlock.toLocaleString()} • 
+                    Gas: {blockchainData.gasPrice} gwei • 
+                    Last Updated: {new Date(blockchainData.lastUpdated).toLocaleTimeString()}
+                  </p>
+                  <p className="text-xs text-blue-400 mt-1">
+                    🔒 Blockchain data cached for 1 hour to reduce network requests
+                  </p>
+                </div>
+              )}
             </div>
-            <button
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="flex items-center space-x-2 px-4 py-2 bg-ghost-700 text-white rounded-lg hover:bg-ghost-600 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowBlockchainData(!showBlockchainData)}
+                className="flex items-center space-x-2 px-3 py-2 bg-ghost-600 text-white rounded-lg hover:bg-ghost-500 transition-colors"
+              >
+                <Network className="w-4 h-4" />
+                <span>{showBlockchainData ? 'Hide' : 'Show'} Blockchain Data</span>
+              </button>
+              {showBlockchainData && (
+                <button
+                  onClick={() => {
+                    refreshBlockchainData()
+                    // Force refetch by toggling state
+                    setShowBlockchainData(false)
+                    setTimeout(() => setShowBlockchainData(true), 100)
+                  }}
+                  className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+                  title="Refresh blockchain data (cached for 1 hour)"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Refresh Blockchain</span>
+                </button>
+              )}
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="flex items-center space-x-2 px-4 py-2 bg-ghost-700 text-white rounded-lg hover:bg-ghost-600 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>{isRefreshing ? 'Refreshing...' : 'Refresh All'}</span>
+              </button>
+            </div>
           </div>
         </motion.div>
 
@@ -153,7 +238,7 @@ export default function AnalyticsPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div className="p-2 bg-primary-500/20 rounded-lg">
-                      <metric.icon className="w-5 h-5 text-primary-400" />
+                      <metric.icon className={`w-5 h-5 ${metric.color}`} />
                     </div>
                     <div className={`flex items-center space-x-1 text-sm ${
                       metric.trend === 'up' ? 'text-green-400' : 'text-red-400'
@@ -178,11 +263,15 @@ export default function AnalyticsPage() {
           ))}
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-8 mb-8">
-          {/* Top Markets */}
+        {/* Real-time Market Data */}
+        <div className="grid lg:grid-cols-3 gap-6 mb-8">
+          {/* Top Markets with Real Prices */}
           <Card>
             <CardHeader>
-              <CardTitle>Top Markets by Volume</CardTitle>
+              <CardTitle className="flex items-center space-x-2">
+                <Globe className="w-5 h-5" />
+                <span>Live Market Prices</span>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -202,7 +291,7 @@ export default function AnalyticsPage() {
                         <div>
                           <div className="font-medium">{market.market}</div>
                           <div className="text-sm text-ghost-400">
-                            {formatCurrency(market.volume)} • {market.share.toFixed(1)}%
+                            ${market.currentPrice?.toFixed(2) || '0.00'} • {market.share.toFixed(1)}%
                           </div>
                           <div className="text-xs text-ghost-500">
                             {market.activeIntents} active, {market.settledIntents} settled
@@ -218,7 +307,7 @@ export default function AnalyticsPage() {
                   ))
                 ) : (
                   <div className="text-center py-8 text-ghost-400">
-                    <Activity className="w-8 h-8 mx-auto mb-2" />
+                    <Globe className="w-8 h-8 mx-auto mb-2" />
                     <p>No market data available</p>
                   </div>
                 )}
@@ -226,6 +315,61 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
 
+          {/* Top DeFi Protocols */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <DollarSign className="w-5 h-5" />
+                <span>Top DeFi Protocols</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {topDefiProtocols.length > 0 ? (
+                  topDefiProtocols.map((protocol, index) => (
+                    <motion.div
+                      key={protocol.name}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                      className="flex items-center justify-between p-3 rounded-lg bg-ghost-800/30"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center text-xs font-bold">
+                          {index + 1}
+                        </div>
+                        <div>
+                          <div className="font-medium">{protocol.name}</div>
+                          <div className="text-sm text-ghost-400">
+                            {formatCurrency(protocol.tvl)} TVL
+                          </div>
+                          <div className="text-xs text-ghost-500">
+                            {protocol.category}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-sm font-medium ${
+                          protocol.change1d >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {formatPercentage(protocol.change1d)}
+                        </div>
+                        <div className="text-xs text-ghost-400">24h</div>
+                      </div>
+                    </motion.div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-ghost-400">
+                    <DollarSign className="w-8 h-8 mx-auto mb-2" />
+                    <p>No DeFi data available</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-8 mb-8">
           {/* Recent Activity */}
           <Card>
             <CardHeader>
@@ -291,6 +435,94 @@ export default function AnalyticsPage() {
               </div>
             </CardContent>
           </Card>
+
+                    {/* Blockchain Network Stats - Only show when blockchain data is enabled */}
+          {showBlockchainData && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Network className="w-5 h-5" />
+                  <span>Network Statistics</span>
+                </CardTitle>
+                <p className="text-xs text-blue-400 mt-1">
+                  🔒 Cached for 1 hour • Click "Refresh Blockchain" for fresh data
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {blockchainData && (
+                    <>
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-ghost-800/30">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-xs font-bold">
+                            #
+                          </div>
+                          <div>
+                            <div className="font-medium">Current Block</div>
+                            <div className="text-sm text-ghost-400">
+                              {blockchainData.currentBlock.toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-medium text-blue-400">
+                            {blockchainData.avgBlockTime}s
+                          </div>
+                          <div className="text-xs text-ghost-400">avg time</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-ghost-800/30">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center text-xs font-bold">
+                            ⚡
+                          </div>
+                          <div>
+                            <div className="font-medium">Network Utilization</div>
+                            <div className="text-sm text-ghost-400">
+                              {blockchainData.networkUtilization.toFixed(1)}%
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-medium text-green-400">
+                            {blockchainData.baseFee} gwei
+                          </div>
+                          <div className="text-xs text-ghost-400">base fee</div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {networkStats && (
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-ghost-800/30">
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                          networkStats.congestionLevel === 'Low' ? 'bg-green-500' :
+                          networkStats.congestionLevel === 'Medium' ? 'bg-yellow-500' : 'bg-red-500'
+                        }`}>
+                          {networkStats.congestionLevel === 'Low' ? '🟢' : 
+                           networkStats.congestionLevel === 'Medium' ? '🟡' : '🔴'}
+                        </div>
+                        <div>
+                          <div className="font-medium">Congestion Level</div>
+                          <div className="text-sm text-ghost-400">
+                            {networkStats.congestionLevel}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-medium text-ghost-400">
+                          {networkStats.baseFee} gwei
+                        </div>
+                        <div className="text-xs text-ghost-400">current</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* MEV Analytics */}

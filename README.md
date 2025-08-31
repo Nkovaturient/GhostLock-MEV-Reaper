@@ -1,7 +1,9 @@
 # GhostLock: MEV Reaper
 
 A stealth shield against MEV, encrypting trades and settling them fair.
-### Live: [Demo](https://ghostlock.vercel.app/) 🟢
+### Live: [Preview](https://ghostlock.vercel.app/) 🟢
+### Youtube: [Demo](https://youtu.be/plceuO9AG8c) 🎥
+### Blog: [Hashnode](https://randomticks.hashnode.dev/ghostlock-mev-reaper) 📝
 
 ![GhostLock Banner](https://github.com/user-attachments/assets/8b445ad2-000e-404b-afeb-6e77991f677a)
 

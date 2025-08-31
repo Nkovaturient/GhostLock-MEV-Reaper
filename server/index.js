@@ -20,11 +20,13 @@ const auctionsRouter = require('./routes/auctions')
 const intentsRouter = require('./routes/intents')
 const marketsRouter = require('./routes/markets')
 const mevRouter = require('./routes/mev')
+const externalRouter = require('./routes/external')
 
 app.use('/api/auctions', auctionsRouter)
 app.use('/api/intents', intentsRouter)
 app.use('/api/markets', marketsRouter)
 app.use('/api/mev', mevRouter)
+app.use('/api/external', externalRouter)
 
 app.get('/', (req, res) => {
   res.send(`GhostLocking MEV! Lets play it fair & square.`)

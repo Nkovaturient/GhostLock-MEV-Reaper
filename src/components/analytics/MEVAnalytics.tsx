@@ -1,31 +1,76 @@
 import { motion } from 'framer-motion'
-import { Shield, DollarSign, Activity, TrendingUp, TrendingDown, AlertTriangle, Zap } from 'lucide-react'
+import { Shield, DollarSign, Activity, TrendingUp, TrendingDown, AlertTriangle, Zap, Search, Settings } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { formatCurrency } from '@/lib/utils'
 import { useMEVGlobal, refreshMEVData } from '@/hooks/useMEVData'
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
+import { useBlockNumber } from 'wagmi'
 
 export default function MEVAnalytics() {
-  const { data: mevData, isLoading, error } = useMEVGlobal()
+  const [searchParams, setSearchParams] = useState({
+    address: '0x00356ce6250f8489d23ff32742256ab5be9dd8d7',
+    count: 10,
+    block_number: 16824821,
+    page: 1
+  })
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isCustomSearch, setIsCustomSearch] = useState(false)
 
-  const handleRefresh = async () => {
+  // Get current block number
+  const { data: currentBlock } = useBlockNumber({ watch: true })
+
+  // Use dynamic parameters for MEV data
+  const { data: mevData, isLoading, error } = useMEVGlobal(searchParams)
+
+  // Remove automatic refresh - now controlled by search button
+
+  const handleAddressChange = (address: string) => {
+    // Basic Ethereum address validation
+    if (address === '' || address.startsWith('0x') && address.length === 42) {
+      setSearchParams(prev => ({ ...prev, address }))
+      setIsCustomSearch(true)
+    }
+  }
+
+  const handleCountChange = (count: number) => {
+    setSearchParams(prev => ({ ...prev, count: Math.min(Math.max(count, 1), 100) }))
+    setIsCustomSearch(true)
+  }
+
+  const handleBlockNumberChange = (block_number: number) => {
+    setSearchParams(prev => ({ ...prev, block_number }))
+    setIsCustomSearch(true)
+  }
+
+  const handleResetToDefault = () => {
+    setSearchParams({
+      address: '0x00356ce6250f8489d23ff32742256ab5be9dd8d7',
+      count: 10,
+      block_number: 16824821,
+      page: 1
+    })
+    setIsCustomSearch(false)
+  }
+
+  const handleRefresh = useCallback(async () => {
     setIsRefreshing(true)
     try {
-      await refreshMEVData()
+      await refreshMEVData(searchParams)
     } catch (error) {
       console.error('Failed to refresh MEV data:', error)
     } finally {
       setIsRefreshing(false)
     }
-  }
+  }, [searchParams])
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full" />
-        <span className="ml-3 text-ghost-400">Loading MEV analytics...</span>
+        <span className="ml-3 text-ghost-400">
+          {isCustomSearch ? 'Searching MEV data...' : 'Loading MEV analytics...'}
+        </span>
       </div>
     )
   }
@@ -107,6 +152,121 @@ export default function MEVAnalytics() {
           <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
         </button>
       </div>
+
+      {/* Search and Parameters Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Search className="w-5 h-5" />
+            <span>MEV Data Parameters</span>
+          </CardTitle>
+          <p className="text-sm text-ghost-400">
+            Search for MEV data by wallet address, block range, and transaction count. Use the search button to fetch data with your parameters.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Address Input */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-ghost-300">Wallet Address</label>
+              <input
+                type="text"
+                value={searchParams.address}
+                onChange={(e) => handleAddressChange(e.target.value)}
+                placeholder="0x..."
+                className={`w-full px-3 py-2 bg-ghost-800 border rounded-lg text-white placeholder-ghost-400 focus:outline-none focus:ring-2 focus:ring-primary-500 ${
+                  searchParams.address && (!searchParams.address.startsWith('0x') || searchParams.address.length !== 42)
+                    ? 'border-red-500'
+                    : 'border-ghost-600'
+                }`}
+              />
+              {searchParams.address && (!searchParams.address.startsWith('0x') || searchParams.address.length !== 42) && (
+                <p className="text-xs text-red-400">Please enter a valid Ethereum address (0x...)</p>
+              )}
+            </div>
+
+            {/* Count Input */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-ghost-300">Block Count (1-100)</label>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={searchParams.count}
+                onChange={(e) => handleCountChange(parseInt(e.target.value) || 10)}
+                className="w-full px-3 py-2 bg-ghost-800 border border-ghost-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+
+            {/* Block Number Input */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-ghost-300">Starting Block</label>
+              <div className="flex space-x-2">
+                <input
+                  type="number"
+                  value={searchParams.block_number}
+                  onChange={(e) => handleBlockNumberChange(parseInt(e.target.value) || 16824821)}
+                  className="flex-1 px-3 py-2 bg-ghost-800 border border-ghost-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                {currentBlock !== undefined && (
+                  <button
+                    onClick={() => handleBlockNumberChange(Number(currentBlock))}
+                    className="px-2 py-2 bg-ghost-600 text-white rounded-lg hover:bg-ghost-500 transition-colors text-xs"
+                    title="Set to current block"
+                  >
+                    Now
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Search Button */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-ghost-300">&nbsp;</label>
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing || !searchParams.address.startsWith('0x') || searchParams.address.length !== 42}
+                className="w-full px-3 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 transition-colors"
+              >
+                {isRefreshing ? 'Searching...' : 'Search MEV Data'}
+              </button>
+            </div>
+
+            {/* Reset Button */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-ghost-300">&nbsp;</label>
+              <button
+                onClick={handleResetToDefault}
+                className="w-full px-3 py-2 bg-ghost-700 text-white rounded-lg hover:bg-ghost-600 transition-colors"
+              >
+                Reset to Default
+              </button>
+            </div>
+          </div>
+
+          {/* Current Parameters Display */}
+          {isCustomSearch && (
+            <div className="mt-4 p-3 bg-ghost-800/50 rounded-lg border border-ghost-600">
+              <div className="flex items-center space-x-2 mb-2">
+                <Settings className="w-4 h-4 text-primary-400" />
+                <span className="text-sm font-medium text-ghost-300">Current Parameters:</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs text-ghost-400">
+                <span>Address: {searchParams.address.slice(0, 8)}...{searchParams.address.slice(-6)}</span>
+                <span>Count: {searchParams.count}</span>
+                <span>Block: {searchParams.block_number}</span>
+                <span>Page: {searchParams.page}</span>
+                <span>Status: {isCustomSearch ? 'Custom' : 'Default'}</span>
+              </div>
+              {currentBlock !== undefined && (
+                <div className="mt-2 text-xs text-ghost-500">
+                  Current Block: {Number(currentBlock).toLocaleString()}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Key Metrics */}
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">

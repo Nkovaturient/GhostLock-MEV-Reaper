@@ -6,7 +6,7 @@ const axios = require('axios')
 const ZEROMEV_API_BASE = process.env.ZEROMEV_API
 const RATE_LIMIT_DELAY = 10000 // 5 calls per second = 10s between calls
 
-// Cache for MEV data
+// Cache for MEV data - now supports multiple parameter combinations
 let mevDataCache = {}
 let lastCacheUpdate = 0
 const CACHE_DURATION = 60000 // 1 minute cache
@@ -15,23 +15,31 @@ const CACHE_DURATION = 60000 // 1 minute cache
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 
 // Fetch MEV data from ZeroMEV API
-async function fetchMEVData() {
+async function fetchMEVData(params = {}) {
+  const {
+    address = '0x00356ce6250f8489d23ff32742256ab5be9dd8d7',
+    count = 10,
+    block_number = 16824821,
+    page = 1
+  } = params
+
   try {
-    // Fetch recent MEV blocks (last 100 blocks)
-    const mevBlocksResponse = await axios.get(`${ZEROMEV_API_BASE}/mevBlock?block_number=16824821&count=10`)
+    // Fetch recent MEV blocks with dynamic parameters
+    const mevBlocksResponse = await axios.get(`${ZEROMEV_API_BASE}/mevBlock?block_number=${block_number}&count=${count}`)
     await delay(RATE_LIMIT_DELAY)
     
-    // Fetch MEV transactions summary-- 0x00356ce6250f8489d23ff32742256ab5be9dd8d7
-    const mevSummaryResponse = await axios.get(`${ZEROMEV_API_BASE}/mevTransactionsSummary?address_from=0x00356ce6250f8489d23ff32742256ab5be9dd8d7`)
+    // Fetch MEV transactions summary with dynamic address
+    const mevSummaryResponse = await axios.get(`${ZEROMEV_API_BASE}/mevTransactionsSummary?address_from=${address}`)
     await delay(RATE_LIMIT_DELAY)
     
-    // Fetch recent MEV transactions-- 0x039dc7c4a5769ca80c9e5c0cee5c8b287faeb3af
-    const mevTransactionsResponse = await axios.get(`${ZEROMEV_API_BASE}/mevTransactions?address_from=0x039dc7c4a5769ca80c9e5c0cee5c8b287faeb3af&page=1`)
+    // Fetch recent MEV transactions with dynamic address and page
+    const mevTransactionsResponse = await axios.get(`${ZEROMEV_API_BASE}/mevTransactions?address_from=${address}&page=${page}`)
     
     return {
       blocks: mevBlocksResponse.data,
       summary: mevSummaryResponse.data,
-      transactions: mevTransactionsResponse.data
+      transactions: mevTransactionsResponse.data,
+      params: { address, count, block_number, page }
     }
   } catch (error) {
     console.error('Error fetching MEV data:', error.message)
@@ -86,23 +94,69 @@ function calculateMEVStats(mevData) {
   }
 }
 
-// GET /api/mev - Get comprehensive MEV data
+// GET /api/mev - Get comprehensive MEV data with optional parameters
 router.get('/', async (req, res) => {
   try {
+    const { address, count, block_number, page } = req.query
+    
+    // Validate parameters
+    const validatedCount = Math.min(Math.max(parseInt(count) || 10, 1), 100)
+    const validatedBlockNumber = parseInt(block_number) || 16824821
+    const validatedPage = Math.max(parseInt(page) || 1, 1)
+    const validatedAddress = address || '0x00356ce6250f8489d23ff32742256ab5be9dd8d7'
+    
+    // Create cache key based on parameters
+    const cacheKey = `${validatedAddress}-${validatedCount}-${validatedBlockNumber}-${validatedPage}`
+    
     // Check cache first
-    if (Date.now() - lastCacheUpdate < CACHE_DURATION && Object.keys(mevDataCache).length > 0) {
-      return res.json(mevDataCache)
+    if (Date.now() - lastCacheUpdate < CACHE_DURATION && mevDataCache[cacheKey]) {
+      return res.json(mevDataCache[cacheKey])
     }
 
-    const mevData = await fetchMEVData()
+    const mevData = await fetchMEVData({
+      address: validatedAddress,
+      count: validatedCount,
+      block_number: validatedBlockNumber,
+      page: validatedPage
+    })
     const mevStats = calculateMEVStats(mevData)
     
-    mevDataCache = mevStats
+    // Store in cache with parameter-specific key
+    if (!mevDataCache[cacheKey]) {
+      mevDataCache[cacheKey] = {}
+    }
+    mevDataCache[cacheKey] = mevStats
     lastCacheUpdate = Date.now()
     
     res.json(mevStats)
   } catch (error) {
     console.error('Error fetching MEV data:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// GET /api/mev/dynamic - Get MEV data with specific parameters
+router.get('/dynamic', async (req, res) => {
+  try {
+    const { address, count, block_number, page } = req.query
+    
+    // Validate parameters
+    const validatedCount = Math.min(Math.max(parseInt(count) || 10, 1), 100)
+    const validatedBlockNumber = parseInt(block_number) || 16824821
+    const validatedPage = Math.max(parseInt(page) || 1, 1)
+    const validatedAddress = address || '0x00356ce6250f8489d23ff32742256ab5be9dd8d7'
+    
+    const mevData = await fetchMEVData({
+      address: validatedAddress,
+      count: validatedCount,
+      block_number: validatedBlockNumber,
+      page: validatedPage
+    })
+    const mevStats = calculateMEVStats(mevData)
+    
+    res.json(mevStats)
+  } catch (error) {
+    console.error('Error fetching dynamic MEV data:', error)
     res.status(500).json({ error: error.message })
   }
 })
