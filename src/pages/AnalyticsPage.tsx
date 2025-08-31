@@ -1,11 +1,11 @@
 import { motion } from 'framer-motion'
-import { TrendingUp, TrendingDown, Activity, DollarSign, Fuel, Shield, Network, RefreshCw, CheckCircle, Clock, Globe } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, DollarSign, Shield, Network, RefreshCw, CheckCircle, Clock, Globe } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
 import { useMarkets, useMarketStats, refreshMarketData } from '@/hooks/useMarketData'
-import { useBlockchainData, useGasPrices, useNetworkStats, refreshBlockchainData } from '@/hooks/useBlockchainData'
-import { useCryptoData, useDefiData, useGasData, useExternalMEVData, refreshExternalData } from '@/hooks/useExternalData'
+import { useBlockchainData, useNetworkStats, refreshBlockchainData } from '@/hooks/useBlockchainData'
+import { useCryptoData, useDefiData, useExternalMEVData, refreshExternalData } from '@/hooks/useExternalData'
 import { useState } from 'react'
 import MEVAnalytics from '@/components/analytics/MEVAnalytics'
 import { useExplorer } from '@/hooks/useExplorer'
@@ -22,7 +22,6 @@ export default function AnalyticsPage() {
   
   // Blockchain data hooks - only load when needed
   const { data: blockchainData, isLoading: blockchainLoading } = useBlockchainData()
-  const { data: gasPrices, isLoading: gasPricesLoading } = useGasPrices()
   const { data: networkStats, isLoading: networkStatsLoading } = useNetworkStats()
   
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -49,7 +48,7 @@ export default function AnalyticsPage() {
     }
   }
 
-  const isLoading = marketsLoading || statsLoading || intentsLoading || cryptoLoading || defiLoading || externalMEVLoading || (showBlockchainData && (blockchainLoading || gasPricesLoading || networkStatsLoading))
+  const isLoading = marketsLoading || statsLoading || intentsLoading || cryptoLoading || defiLoading || externalMEVLoading || (showBlockchainData && (blockchainLoading || networkStatsLoading))
   const hasError = marketsError || statsError || intentsError
 
   // Prepare metrics from real data with external API integration
