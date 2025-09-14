@@ -1,4 +1,5 @@
 const { BATCH_SETTLEMENT_ABI, EPOCH_RNG_ABI, GHOSTLOCK_INTENTS_ABI } = require("./contracts/ABI");
+require('dotenv').config();
 
 // Backend configuration for GhostLock MEV Reaper
 const CONFIG = {
@@ -10,7 +11,7 @@ const CONFIG = {
   },
 
   NETWORK: {
-    WALLET_ADDR: '0x1Bf95a7322D3B207A5a6f1beed9dD2C8145558fC',
+    WALLET_ADDR: process.env.WALLET_ADDR,
     CHAIN_ID: 84532,
     RPC_URL: process.env.RPC_URL || "https://sepolia.base.org",
     BLOCK_TIME_SECONDS: 2
@@ -61,7 +62,7 @@ const CONFIG = {
   },
 
   REDIS : {
-    URL: 'redis://default:Zvdpuc7CxB7fi4QrThQKsZFPxTOsUQ96@redis-16996.crce182.ap-south-1-1.ec2.redns.redis-cloud.com:16996' ,
+    URL: process.env.REDIS_URL,
   }
 };
 
