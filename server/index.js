@@ -1,5 +1,6 @@
 const express = require('express')
 const cors = require('cors')
+const { solverService } = require('./services/solver.js')
 require('dotenv').config();
 
 const app = express()
@@ -20,13 +21,15 @@ const auctionsRouter = require('./routes/auctions')
 const intentsRouter = require('./routes/intents')
 const marketsRouter = require('./routes/markets')
 const mevRouter = require('./routes/mev')
-const externalRouter = require('./routes/external')
+const externalRouter = require('./routes/external');
+const { metricsHandler } = require('./utils/metrics.js');
 
 app.use('/api/auctions', auctionsRouter)
 app.use('/api/intents', intentsRouter)
 app.use('/api/markets', marketsRouter)
 app.use('/api/mev', mevRouter)
 app.use('/api/external', externalRouter)
+app.get('/metrics', metricsHandler);
 
 app.get('/', (req, res) => {
   res.send(`GhostLocking MEV! Lets play it fair & square.`)
@@ -49,14 +52,34 @@ app.use((err, req, res, next) => {
   })
 })
 
-// 404 handler
+
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Endpoint not found' })
 })
 
-app.listen(PORT, () => {
-  console.log(`server running on http://localhost:${PORT}`)
-  console.log(`Health check: http://localhost:${PORT}/health`)
-})
+
+async function startServer() {
+  try {
+    await solverService.initialize()
+
+    app.listen(PORT, () => {
+      console.log(`🚀 GhostLock MEV Reaper server running on http://localhost:${PORT}`)
+      console.log(`Health check: http://localhost:${PORT}/health`)
+      console.log(`Solver status: http://localhost:${PORT}/api/auctions/solver/status`)
+    })
+
+    if (process.env.SOLVER_PRIVATE_KEY) {
+      console.log('🤖 Auto-starting solver service...')
+      await solverService.start()
+    } else {
+      console.log('No SOLVER_PRIVATE_KEY provided - solver will run in read-only mode')
+    }
+  } catch (error) {
+    console.error(' Failed to start server:', error)
+    process.exit(1)
+  }
+}
+
+startServer()
 
 module.exports = app

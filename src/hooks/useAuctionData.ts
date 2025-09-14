@@ -68,7 +68,7 @@ export function useAuctionData() {
         ]
       }
     },
-    refetchInterval: 360000, // Refresh every 1hr
+    refetchInterval: 60000, // Refresh every 1hr
   })
 }
 

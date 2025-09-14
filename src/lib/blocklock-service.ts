@@ -13,6 +13,26 @@ export interface IntentPayload {
   user: string
 }
 
+export interface DummyIntentPayload {
+  market: string
+  side: 'buy' | 'sell'
+  amount: string
+  limitPrice: string
+  marketId: number
+  slippageBps: number
+  epoch: number
+  user: string
+  isDummy: true
+}
+
+export interface PrivacyConfig {
+  enablePadding: boolean
+  enableDummyIntents: boolean
+  paddingSize: number
+  dummyIntentCount: number
+  dummyIntentRatio: number
+}
+
 export interface BlocklockCiphertext {
   u: {
     x: readonly [bigint, bigint]
@@ -32,12 +52,17 @@ export class BlocklockService {
   }
 
   /**
-   * Encrypts a trading intent using blocklock-js
+   * Encrypts a trading intent using blocklock-js with privacy hardening
    * @param payload The intent payload to encrypt
    * @param unlockBlock The block number when decryption becomes available
+   * @param privacyConfig Optional privacy configuration
    * @returns Encrypted ciphertext structure ready for contract submission
    */
-  async encryptIntent(payload: IntentPayload, unlockBlock: number): Promise<BlocklockCiphertext> {
+  async encryptIntent(
+    payload: IntentPayload, 
+    unlockBlock: number, 
+    privacyConfig?: PrivacyConfig
+  ): Promise<BlocklockCiphertext> {
     try {
       if (!Blocklock) {
         throw new Error('Blocklock not available in blocklock-js module')
@@ -47,7 +72,7 @@ export class BlocklockService {
 
       // Encode the payload according to the contract's expected format
       const abiCoder = ethers.AbiCoder.defaultAbiCoder()
-      const encodedPayload = abiCoder.encode(
+      let encodedPayload = abiCoder.encode(
         ['address', 'uint8', 'uint256', 'uint256', 'uint8', 'uint256'],
         [
           payload.user,
@@ -58,6 +83,11 @@ export class BlocklockService {
           payload.epoch
         ]
       )
+
+      // Apply privacy hardening if configured
+      if (privacyConfig?.enablePadding) {
+        encodedPayload = this.addPadding(encodedPayload, privacyConfig.paddingSize)
+      }
 
       // Encrypt the payload with block-based condition
       const ciphertext = blocklock.encrypt(
@@ -217,6 +247,145 @@ export class BlocklockService {
    */
   static getTargetEpoch(targetBlock: number): number {
     return Math.floor(targetBlock / CONFIG.AUCTION.EPOCH_DURATION_BLOCKS)
+  }
+
+  /**
+   * Adds padding to encrypted payload to prevent size-based analysis
+   * @param encodedPayload The encoded payload to pad
+   * @param paddingSize The size of padding to add
+   * @returns Padded payload
+   */
+  private addPadding(encodedPayload: string, paddingSize: number): string {
+    const payloadBytes = ethers.getBytes(encodedPayload)
+    const paddingBytes = new Uint8Array(paddingSize)
+    
+    // Fill with random data
+    crypto.getRandomValues(paddingBytes)
+    
+    // Combine payload with padding
+    const paddedBytes = new Uint8Array(payloadBytes.length + paddingBytes.length)
+    paddedBytes.set(payloadBytes, 0)
+    paddedBytes.set(paddingBytes, payloadBytes.length)
+    
+    return ethers.hexlify(paddedBytes)
+  }
+
+  /**
+   * Generates dummy intents to obfuscate real trading patterns
+   * @param realIntent The real intent to base dummy intents on
+   * @param count Number of dummy intents to generate
+   * @returns Array of dummy intent payloads
+   */
+  generateDummyIntents(realIntent: IntentPayload, count: number): DummyIntentPayload[] {
+    const dummies: DummyIntentPayload[] = []
+    
+    for (let i = 0; i < count; i++) {
+      // Generate random but realistic dummy intent
+      const dummySide = Math.random() > 0.5 ? 'buy' : 'sell'
+      const dummyAmount = this.generateRandomAmount(realIntent.amount)
+      const dummyPrice = this.generateRandomPrice(realIntent.limitPrice, dummySide)
+      
+      dummies.push({
+        market: realIntent.market,
+        side: dummySide,
+        amount: dummyAmount,
+        limitPrice: dummyPrice,
+        marketId: realIntent.marketId,
+        slippageBps: realIntent.slippageBps,
+        epoch: realIntent.epoch,
+        user: realIntent.user,
+        isDummy: true
+      })
+    }
+    
+    return dummies
+  }
+
+  /**
+   * Generates a random amount within reasonable bounds
+   * @param baseAmount The base amount to vary from
+   * @returns Random amount string
+   */
+  private generateRandomAmount(baseAmount: string): string {
+    const base = parseFloat(baseAmount)
+    const variation = 0.5 + Math.random() * 1.5 // 50% to 200% of base
+    const randomAmount = base * variation
+    return randomAmount.toFixed(6)
+  }
+
+  /**
+   * Generates a random price within reasonable bounds
+   * @param basePrice The base price to vary from
+   * @param side The side (buy/sell) to determine price direction
+   * @returns Random price string
+   */
+  private generateRandomPrice(basePrice: string, side: 'buy' | 'sell'): string {
+    const base = parseFloat(basePrice)
+    const variation = 0.95 + Math.random() * 0.1 // ±5% variation
+    
+    // For buy orders, dummy prices should be higher (less likely to execute)
+    // For sell orders, dummy prices should be lower (less likely to execute)
+    const priceMultiplier = side === 'buy' ? 1 + variation * 0.1 : 1 - variation * 0.1
+    
+    const randomPrice = base * priceMultiplier
+    return randomPrice.toFixed(2)
+  }
+
+  /**
+   * Encrypts multiple intents (real + dummy) for batch submission
+   * @param realIntent The real intent to encrypt
+   * @param unlockBlock The block number when decryption becomes available
+   * @param privacyConfig Privacy configuration
+   * @returns Array of encrypted ciphertexts
+   */
+  async encryptIntentBatch(
+    realIntent: IntentPayload,
+    unlockBlock: number,
+    privacyConfig: PrivacyConfig
+  ): Promise<BlocklockCiphertext[]> {
+    const ciphertexts: BlocklockCiphertext[] = []
+    
+    // Encrypt real intent
+    const realCiphertext = await this.encryptIntent(realIntent, unlockBlock, privacyConfig)
+    ciphertexts.push(realCiphertext)
+    
+    // Generate and encrypt dummy intents if enabled
+    if (privacyConfig.enableDummyIntents) {
+      const dummyIntents = this.generateDummyIntents(realIntent, privacyConfig.dummyIntentCount)
+      for (const dummyIntent of dummyIntents) {
+        // Ensure dummyIntent has all required properties of IntentPayload
+        const completeDummyIntent: IntentPayload = {
+          ...dummyIntent,
+          slippageBps: realIntent.slippageBps // Copy from realIntent or set a default if needed
+        }
+        const dummyCiphertext = await this.encryptIntent(completeDummyIntent, unlockBlock, privacyConfig)
+        ciphertexts.push(dummyCiphertext)
+      }
+  }
+  return ciphertexts
+}
+
+  /**
+   * Filters out dummy intents from decrypted payloads
+   * @param decryptedPayloads Array of decrypted payloads
+   * @returns Array of real intents only
+   */
+  static filterRealIntents(decryptedPayloads: any[]): IntentPayload[] {
+    return decryptedPayloads.filter(payload => !payload.isDummy)
+  }
+
+  /**
+   * Gets default privacy configuration
+   * @returns Default privacy configuration
+   */
+  static getDefaultPrivacyConfig(): PrivacyConfig {
+    return {
+      enablePadding: true,
+      enableDummyIntents: true,
+      paddingSize: 256, // 256 bytes of random padding
+      dummyIntentCount: 3, // 3 dummy intents per real intent
+      dummyIntentRatio: 0.25 // 25% of intents should be dummy
+    }
   }
 }
 

@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pydantic
+requests
+# add sklearn, torch, onnxruntime if you plan to run local model inference
+# scikit-learn
+# onnxruntime

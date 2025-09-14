@@ -1,4 +1,6 @@
-import { setTimeout as delay } from "timers/promises";
+const ethers = require("ethers");
+const { CONFIG, ABIS } = require("../config.js");
+const { setTimeout: delay } = require("timers/promises");
 
 const PROVIDER = (process.env.PRICE_FEED_PROVIDER || "pyth");
 const BASE = process.env.PRICE_FEED_BASE_URL || "";
@@ -23,6 +25,171 @@ async function getJSON(url, init = {}, tries = 3) {
     }
   }
   throw lastErr;
+}
+
+/**
+ * Rate limiting utility for RPC calls
+ */
+class RateLimiter {
+  constructor(maxRequests = 10, timeWindow = 1000) {
+    this.maxRequests = maxRequests;
+    this.timeWindow = timeWindow;
+    this.requests = [];
+  }
+
+  async waitForSlot() {
+    const now = Date.now();
+    
+    // Remove old requests outside the time window
+    this.requests = this.requests.filter(time => now - time < this.timeWindow);
+    
+    // If we're at the limit, wait
+    if (this.requests.length >= this.maxRequests) {
+      const oldestRequest = Math.min(...this.requests);
+      const waitTime = this.timeWindow - (now - oldestRequest);
+      if (waitTime > 0) {
+        await delay(waitTime);
+        return this.waitForSlot(); // Recursive call after waiting
+      }
+    }
+    
+    // Record this request
+    this.requests.push(now);
+  }
+}
+
+// Global rate limiter for RPC calls
+const rpcRateLimiter = new RateLimiter(CONFIG.RPC.MAX_REQUESTS_PER_SECOND, CONFIG.RPC.RATE_LIMIT_WINDOW_MS);
+
+/**
+ * Fetches ready intents from the GhostLockIntents contract with rate limiting
+ * @param provider Ethers provider instance
+ * @param epoch Optional epoch filter
+ * @returns Array of ready intents with decoded data
+ */
+async function fetchReadyIntents(provider, epoch = null) {
+  try {
+    const intentsContract = new ethers.Contract(
+      CONFIG.CONTRACTS.GHOSTLOCK_INTENTS,
+      ABIS.GHOSTLOCK_INTENTS,
+      provider
+    );
+
+    // Get the last request ID to know how many intents exist
+    await rpcRateLimiter.waitForSlot();
+    const lastRequestId = await intentsContract.lastRequestId();
+    const intents = [];
+
+    // Fetch intents in smaller batches with rate limiting
+    const batchSize = CONFIG.RPC.BATCH_SIZE;
+    for (let i = 0; i <= lastRequestId; i += batchSize) {
+      const endId = Math.min(i + batchSize - 1, Number(lastRequestId));
+      
+      // Process each intent individually with rate limiting
+      for (let j = i; j <= endId; j++) {
+        try {
+          await rpcRateLimiter.waitForSlot();
+          const [requestedBy, encryptedAt, unlockBlock, ready, decrypted] = await intentsContract.intents(j);
+          
+          if (ready && decrypted && decrypted.length > 0) {
+            try {
+              // Decode the decrypted intent data
+              const [user, side, amount, limitPrice, marketId, intentEpoch] = 
+                ethers.AbiCoder.defaultAbiCoder().decode(
+                  ['address', 'uint8', 'uint256', 'uint256', 'uint8', 'uint256'],
+                  decrypted
+                );
+
+              // Filter by epoch if specified
+              if (epoch !== null && Number(intentEpoch) !== epoch) {
+                continue;
+              }
+
+              // Check if this is a dummy intent (would need additional field in contract)
+              // For now, we'll assume all intents are real
+              const isDummy = false; // This would be determined by contract logic
+
+              intents.push({
+                requestId: j,
+                user: user,
+                side: Number(side),
+                amount: amount,
+                limitPrice: limitPrice,
+                marketId: Number(marketId),
+                epoch: Number(intentEpoch),
+                encryptedAt: Number(encryptedAt),
+                unlockBlock: Number(unlockBlock),
+                isDummy: isDummy
+              });
+            } catch (decodeError) {
+              console.warn(`Failed to decode intent ${j}:`, decodeError);
+            }
+          }
+        } catch (rpcError) {
+          // Handle rate limiting and other RPC errors
+          if (rpcError.code === 'CALL_EXCEPTION' && rpcError.info?.error?.code === -32016) {
+            console.warn(`Rate limited on intent ${j}, waiting longer...`);
+            await delay(CONFIG.RPC.RETRY_DELAY_MS); // Wait on rate limit
+            j--; // Retry this intent
+            continue;
+          }
+          console.warn(`RPC error for intent ${j}:`, rpcError.message);
+        }
+      }
+    }
+
+    return intents;
+  } catch (error) {
+    console.error('Error fetching ready intents:', error);
+    throw error;
+  }
+}
+
+/**
+ * Groups intents by market and epoch for batch settlement
+ * @param intents Array of ready intents
+ * @returns Object with market-epoch keys and intent arrays as values
+ */
+function groupIntentsByMarketEpoch(intents) {
+  const groups = {};
+  
+  for (const intent of intents) {
+    const key = `${intent.marketId}-${intent.epoch}`;
+    if (!groups[key]) {
+      groups[key] = [];
+    }
+    groups[key].push(intent);
+  }
+  
+  return groups;
+}
+
+/**
+ * Filters out dummy intents from a list of intents
+ * @param intents Array of intents
+ * @returns Array of real intents only
+ */
+function filterRealIntents(intents) {
+  return intents.filter(intent => !intent.isDummy);
+}
+
+/**
+ * Analyzes intent patterns for privacy metrics
+ * @param intents Array of intents
+ * @returns Privacy analysis metrics
+ */
+function analyzePrivacyMetrics(intents) {
+  const totalIntents = intents.length;
+  const dummyIntents = intents.filter(intent => intent.isDummy).length;
+  const realIntents = totalIntents - dummyIntents;
+  
+  return {
+    totalIntents,
+    realIntents,
+    dummyIntents,
+    dummyRatio: totalIntents > 0 ? dummyIntents / totalIntents : 0,
+    privacyScore: totalIntents > 0 ? (dummyIntents / totalIntents) * 100 : 0
+  };
 }
 
 // 1) PYTH price service: map "ETH-USD" to a price_id or use the universal endpoint.
@@ -84,7 +251,7 @@ function coingeckoIdFor(sym) {
   return m[sym];
 }
 
-export async function fetchReferencePrice(symbol) {
+async function fetchReferencePrice(symbol) {
   switch (PROVIDER) {
     case "pyth": return fetchPyth(symbol);
     case "coinbase": return fetchCoinbase(symbol);
@@ -92,3 +259,5 @@ export async function fetchReferencePrice(symbol) {
     default: throw new Error(`Unknown provider: ${PROVIDER}`);
   }
 }
+
+module.exports = { fetchReadyIntents, groupIntentsByMarketEpoch, filterRealIntents, analyzePrivacyMetrics, fetchReferencePrice };

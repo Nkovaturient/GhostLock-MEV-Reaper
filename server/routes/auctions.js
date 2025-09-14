@@ -1,58 +1,87 @@
 const express = require('express')
+const { ethers } = require('ethers')
+const { CONFIG, MARKETS } = require('../config.js')
+const { fetchReadyIntents, groupIntentsByMarketEpoch } = require('../services/intents.js')
+const { computeUniformClearingPrice } = require('../services/price.js')
+const { solverService } = require('../services/solver.js')
+
 const router = express.Router()
 
-// Mock auction data - replace with actual blockchain data fetching
-const mockAuctions = [
-  {
-    id: 'A-1001',
-    market: 'ETH/USDC',
-    clearingPrice: '3120.52',
-    aiPrice: '3118.90',
-    intents: 42,
-    settlementBlock: 12345678,
-    status: 'Settled',
-    volume: 1250000,
-    timestamp: Date.now() - 3600000,
-    epoch: 2468,
-    buyFill: '125.5',
-    sellFill: '125.5'
-  },
-  {
-    id: 'A-1000',
-    market: 'WBTC/USDC',
-    clearingPrice: '64123.00',
-    aiPrice: '64100.12',
-    intents: 11,
-    settlementBlock: 12345500,
-    status: 'Settling',
-    volume: 890000,
-    timestamp: Date.now() - 7200000,
-    epoch: 2467,
-    buyFill: '8.2',
-    sellFill: '8.2'
-  },
-  {
-    id: 'A-999',
-    market: 'ETH/USDC',
-    clearingPrice: '3115.20',
-    aiPrice: '3116.45',
-    intents: 28,
-    settlementBlock: 12345200,
-    status: 'Settled',
-    volume: 750000,
-    timestamp: Date.now() - 10800000,
-    epoch: 2466,
-    buyFill: '89.3',
-    sellFill: '89.3'
+// Cache for auction data
+let auctionCache = {
+  data: [],
+  lastUpdate: 0,
+  ttl: 30000 // 30 seconds
+}
+
+/**
+ * Fetch auction data from blockchain and cache it
+ */
+async function fetchAuctionData() {
+  const now = Date.now()
+  if (now - auctionCache.lastUpdate < auctionCache.ttl) {
+    return auctionCache.data
   }
-]
+
+  try {
+    const provider = new ethers.JsonRpcProvider(CONFIG.NETWORK.RPC_URL)
+    const readyIntents = await fetchReadyIntents(provider)
+    const groupedIntents = groupIntentsByMarketEpoch(readyIntents)
+    
+    const auctions = []
+    
+    for (const [key, intents] of Object.entries(groupedIntents)) {
+      const [marketId, epoch] = key.split('-').map(Number)
+      const market = MARKETS[marketId]
+      
+      if (!market) continue
+      
+      const symbol = `${market.base}-${market.quote}`
+      const priceResult = await computeUniformClearingPrice(intents, symbol)
+      
+      // Calculate volume and fills
+      const buyIntents = intents.filter(i => i.side === 0)
+      const sellIntents = intents.filter(i => i.side === 1)
+      const buyVolume = buyIntents.reduce((sum, i) => sum + i.amount, 0n)
+      const sellVolume = sellIntents.reduce((sum, i) => sum + i.amount, 0n)
+      
+      auctions.push({
+        id: `A-${epoch}-${marketId}`,
+        market: market.name,
+        clearingPrice: priceResult.clearingPrice.toString(),
+        aiPrice: priceResult.aiPrice?.toString() || null,
+        intents: intents.length,
+        settlementBlock: null, // Would need to track from events
+        status: 'Ready', // All intents are ready
+        volume: Number(buyVolume + sellVolume),
+        timestamp: Date.now() - (epoch * CONFIG.AUCTION.EPOCH_DURATION_BLOCKS * CONFIG.NETWORK.BLOCK_TIME_SECONDS * 1000),
+        epoch: epoch,
+        buyFill: buyVolume.toString(),
+        sellFill: sellVolume.toString(),
+        method: priceResult.method
+      })
+    }
+    
+    // Sort by epoch (newest first)
+    auctions.sort((a, b) => b.epoch - a.epoch)
+    
+    auctionCache.data = auctions
+    auctionCache.lastUpdate = now
+    
+    return auctions
+  } catch (error) {
+    console.error('Error fetching auction data:', error)
+    return auctionCache.data // Return cached data on error
+  }
+}
 
 // GET /api/auctions - Get all auctions
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const { status, market, limit = 50 } = req.query
     
-    let filteredAuctions = [...mockAuctions]
+    const auctions = await fetchAuctionData()
+    let filteredAuctions = [...auctions]
     
     // Filter by status
     if (status && status !== 'all') {
@@ -79,19 +108,30 @@ router.get('/', (req, res) => {
 })
 
 // GET /api/auctions/stats - Get auction statistics
-router.get('/stats', (req, res) => {
+router.get('/stats', async (req, res) => {
   try {
-    const totalVolume = mockAuctions.reduce((sum, auction) => sum + auction.volume, 0)
-    const avgIntents = Math.round(mockAuctions.reduce((sum, a) => sum + a.intents, 0) / mockAuctions.length)
-    const settledCount = mockAuctions.filter(a => a.status === 'Settled').length
+    const auctions = await fetchAuctionData()
+    const solverStatus = solverService.getStatus()
+    
+    const totalVolume = auctions.reduce((sum, auction) => sum + auction.volume, 0)
+    const avgIntents = auctions.length > 0 ? 
+      Math.round(auctions.reduce((sum, a) => sum + a.intents, 0) / auctions.length) : 0
+    const settledCount = auctions.filter(a => a.status === 'Settled').length
     
     const stats = {
       totalVolume,
-      totalAuctions: mockAuctions.length,
+      totalAuctions: auctions.length,
       settledAuctions: settledCount,
       avgIntents,
-      avgSettlementTime: 42, // seconds
-      successRate: 99.2
+      avgSettlementTime: solverStatus.stats.averageSettlementTime,
+      successRate: solverStatus.stats.totalSettlements > 0 ? 
+        ((solverStatus.stats.totalSettlements - (solverStatus.stats.lastError ? 1 : 0)) / solverStatus.stats.totalSettlements) * 100 : 100,
+      solverStatus: {
+        isRunning: solverStatus.isRunning,
+        hasSigner: solverStatus.hasSigner,
+        totalSettlements: solverStatus.stats.totalSettlements,
+        lastError: solverStatus.stats.lastError
+      }
     }
     
     res.json(stats)
@@ -102,10 +142,11 @@ router.get('/stats', (req, res) => {
 })
 
 // GET /api/auctions/:id - Get specific auction
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params
-    const auction = mockAuctions.find(a => a.id === id)
+    const auctions = await fetchAuctionData()
+    const auction = auctions.find(a => a.id === id)
     
     if (!auction) {
       return res.status(404).json({ error: 'Auction not found' })
@@ -115,6 +156,39 @@ router.get('/:id', (req, res) => {
   } catch (error) {
     console.error('Error fetching auction:', error)
     res.status(500).json({ error: 'Failed to fetch auction data' })
+  }
+})
+
+// GET /api/auctions/solver/status - Get solver service status
+router.get('/solver/status', (req, res) => {
+  try {
+    const status = solverService.getStatus()
+    res.json(status)
+  } catch (error) {
+    console.error('Error fetching solver status:', error)
+    res.status(500).json({ error: 'Failed to fetch solver status' })
+  }
+})
+
+// POST /api/auctions/solver/start - Start solver service
+router.post('/solver/start', async (req, res) => {
+  try {
+    await solverService.start()
+    res.json({ message: 'Solver service started successfully' })
+  } catch (error) {
+    console.error('Error starting solver:', error)
+    res.status(500).json({ error: 'Failed to start solver service' })
+  }
+})
+
+// POST /api/auctions/solver/stop - Stop solver service
+router.post('/solver/stop', (req, res) => {
+  try {
+    solverService.stop()
+    res.json({ message: 'Solver service stopped successfully' })
+  } catch (error) {
+    console.error('Error stopping solver:', error)
+    res.status(500).json({ error: 'Failed to stop solver service' })
   }
 })
 
