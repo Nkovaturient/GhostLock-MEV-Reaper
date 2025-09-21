@@ -9,8 +9,8 @@ import HomePage from './pages/HomePage'
 import TradePage from './pages/TradePage'
 import AuctionPage from './pages/AuctionPage'
 import AnalyticsPage from './pages/AnalyticsPage'
-import DocsPage from './pages/DocsPage'
 import '@rainbow-me/rainbowkit/styles.css'
+import RevenuePage from './pages/RevenuePage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,7 +35,7 @@ function App() {
                   <Route path="/trade" element={<TradePage />} />
                   <Route path="/auctions" element={<AuctionPage />} />
                   <Route path="/analytics" element={<AnalyticsPage />} />
-                  <Route path="/docs" element={<DocsPage />} />
+                  <Route path="/pricing" element={<RevenuePage />} />
                 </Routes>
               </main>
               <Toaster />

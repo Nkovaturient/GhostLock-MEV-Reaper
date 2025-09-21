@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { Menu, X, Shield, Activity, BarChart3, Zap } from 'lucide-react'
+import { Menu, X, Shield, Activity, BarChart3, Zap, BanknoteIcon, Briefcase } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navigation = [
   { name: 'Trade', href: '/trade', icon: Zap },
   { name: 'Batch Auctions', href: '/auctions', icon: Activity },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+  { name: 'Pricing', href: '/pricing', icon: BanknoteIcon },
 ]
 
 export default function Navbar() {

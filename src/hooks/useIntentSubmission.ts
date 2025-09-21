@@ -93,52 +93,6 @@ export function useIntentSubmission() {
       // Create condition for the unlock block (blocklock condition)
       const condition = BlocklockService.createCondition(payload.targetBlock)
 
-      // 1) Simulate to fetch dynamic price. Prefer value: 0; on revert, retry with a small placeholder value.
-      // let quotedPrice: bigint | null = null
-      // try {
-      //   const contract = new ethers.Contract(
-      //     CONFIG.CONTRACTS.GHOSTLOCK_INTENTS as string,
-      //     GHOSTLOCK_INTENTS_ABI as any,
-      //     (signer as Signer)
-      //   )
-      //   const result0 = await contract.submitEncryptedIntentWithDirectFunding.staticCall(
-      //     700000,
-      //     payload.targetBlock,
-      //     condition,
-      //     ciphertextStruct,
-      //     { value: 0n }
-      //   )
-      //   // Expecting tuple [requestId, price]
-      //   if (Array.isArray(result0) && result0.length >= 2) {
-      //     quotedPrice = BigInt(result0[1])
-      //   }
-      // } catch {
-      //   try {
-      //     const contract = new ethers.Contract(
-      //       CONFIG.CONTRACTS.GHOSTLOCK_INTENTS as string,
-      //       GHOSTLOCK_INTENTS_ABI as any,
-      //       (signer as Signer)
-      //     )
-      //     const result = await contract.submitEncryptedIntentWithDirectFunding.staticCall(
-      //       700000,
-      //       payload.targetBlock,
-      //       condition,
-      //       ciphertextStruct,
-      //       { value: ethers.parseEther('0.1') }
-      //     )
-      //     if (Array.isArray(result) && result.length >= 2) {
-      //       quotedPrice = BigInt(result[1])
-      //     }
-      //   } catch (e) {
-      //     console.error('Simulation failed:', e)
-      //   }
-      // }
-
-      // if (!quotedPrice || quotedPrice <= 0n) {
-      //   throw new Error('Failed to quote blocklock price')
-      // }
-
-      // 2) Send the real write with exact quoted price
       const hash = await writeContractAsync({
         chainId: chainId,
         abi: GHOSTLOCK_INTENTS_ABI,
