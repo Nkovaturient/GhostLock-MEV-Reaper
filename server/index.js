@@ -22,6 +22,7 @@ const intentsRouter = require('./routes/intents')
 const marketsRouter = require('./routes/markets')
 const mevRouter = require('./routes/mev')
 const externalRouter = require('./routes/external');
+const solverRouter = require('./routes/solver.js');
 const { metricsHandler } = require('./utils/metrics.js');
 
 app.use('/api/auctions', auctionsRouter)
@@ -30,6 +31,7 @@ app.use('/api/markets', marketsRouter)
 app.use('/api/mev', mevRouter)
 app.use('/api/external', externalRouter)
 app.get('/metrics', metricsHandler);
+app.use('/api/solver', solverRouter);
 
 app.get('/', (req, res) => {
   res.send(`GhostLocking MEV! Lets play it fair & square.`)

@@ -38,6 +38,12 @@ const CONFIG = {
     TIMEOUT_MS: 10000
   },
 
+  OPENSERV : {
+    WORKSPACE_ID:process.env.OPENSERVE_WORKSPACE,
+    API_KEY: process.env.OPENSERV_API_KEY,
+    AGENT_ID: process.env.AGENT_ID,
+  }, 
+
   //AI/ML Config
   AI: {
     ENABLED: process.env.AI_ENABLED === "true",

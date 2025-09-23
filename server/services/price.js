@@ -22,7 +22,7 @@ async function computeUniformClearingPrice(intents, symbol = "ETH-USD") {
     // here we assume 1e8 for safety; replace SCALE with your actual price decimals
     const SCALE = 10n ** 8n;
     ref = BigInt(Math.round(q.price * Number(SCALE)));
-  } catch { /* survive without it */ }
+  } catch { }
 
   // 3) AI-assisted price optimization (if enabled)
   let aiPrice = null;
