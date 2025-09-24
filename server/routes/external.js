@@ -14,9 +14,6 @@ let externalDataCache = {}
 let lastCacheUpdate = 0
 const CACHE_DURATION = 60000 // 1 minute cache
 
-// Rate limiting helper
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms))
-
 // Fetch cryptocurrency market data from CoinGecko
 async function fetchCryptoData() {
   try {

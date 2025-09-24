@@ -1,11 +1,12 @@
+import React from 'react'
 import { motion } from 'framer-motion'
 import { ExternalLink, CheckCircle, Clock } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
-import { useUserIntents } from '@/hooks/useUserIntents'
-import { formatIntentId } from '@/lib/blocklock-service'
-import { formatNumber } from '@/lib/utils'
-import { CONFIG } from '@/lib/config'
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card'
+import { Badge } from '../ui/Badge'
+import { useUserIntents } from '../../hooks/useUserIntents'
+import { formatIntentId } from '../../lib/blocklock-service'
+import { formatNumber } from '../../lib/utils'
+import { CONFIG } from '../../lib/config'
 import Button from '../ui/Button'
 
 export default function UserIntentsTable() {

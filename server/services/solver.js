@@ -198,7 +198,13 @@ class SolverService {
         return;
       }
 
-      // Compute clearing price
+      // Fetch unbiasable epoch seed for ordering and pricing
+      const epochSeed = await this.fetchEpochSeed(validation.epoch)
+
+      // Deterministic seed-based ordering
+      intents.sort((a, b) => this.compareBySeed(epochSeed, a, b))
+
+      // Compute clearing price (pass symbol; internals can use seed if needed)
       const market = MARKETS[validation.marketId];
       if (!market) {
         console.warn(`Unknown market ID: ${validation.marketId}`);
@@ -206,7 +212,7 @@ class SolverService {
       }
 
       const symbol = `${market.base}-${market.quote}`;
-      const priceResult = await computeUniformClearingPrice(intents, symbol);
+      const priceResult = await computeUniformClearingPrice(intents, symbol, epochSeed);
       
       if (priceResult.clearingPrice === 0n) {
         console.warn(`No valid clearing price found for batch ${key}`);
@@ -237,6 +243,33 @@ class SolverService {
       console.error(`Error processing batch ${key}:`, error);
       throw error;
     }
+  }
+
+  // Query seed from EpochRNG contract (view)
+  async fetchEpochSeed(epoch) {
+    try {
+      const rng = new ethers.Contract(CONFIG.CONTRACTS.EPOCH_RNG, CONFIG.ABIS.EPOCH_RNG, this.provider)
+      const seed = await rng.epochSeed(epoch)
+      return seed
+    } catch (e) {
+      console.warn('Failed to fetch epoch seed, using zero seed')
+      return '0x0000000000000000000000000000000000000000000000000000000000000000'
+    }
+  }
+
+  // Deterministic compare via keccak256(seed || requestId || user)
+  compareBySeed(seed, a, b) {
+    const ha = ethers.keccak256(ethers.concat([
+      seed,
+      ethers.zeroPadValue(ethers.toBeHex(a.requestId), 32),
+      ethers.getBytes(ethers.zeroPadValue(a.user, 32))
+    ]))
+    const hb = ethers.keccak256(ethers.concat([
+      seed,
+      ethers.zeroPadValue(ethers.toBeHex(b.requestId), 32),
+      ethers.getBytes(ethers.zeroPadValue(b.user, 32))
+    ]))
+    return ha < hb ? -1 : ha > hb ? 1 : 0
   }
 
   /**

@@ -1,6 +1,6 @@
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
-import { CONFIG } from "@/lib/config";
+import { CONFIG } from "../lib/config";
 
 export const CHAIN_ID_TO_ADDRESS = {
     "84532": CONFIG.CONTRACTS.GHOSTLOCK_INTENTS,

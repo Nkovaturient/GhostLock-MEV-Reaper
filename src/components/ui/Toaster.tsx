@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react'
-import { useToastStore } from '@/stores/toastStore'
+import { useToastStore } from '../../stores/toastStore'
+import React from 'react'
 
 export function Toaster() {
   const { toasts, removeToast } = useToastStore()

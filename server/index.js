@@ -1,6 +1,8 @@
 const express = require('express')
 const cors = require('cors')
 const { solverService } = require('./services/solver.js')
+const { startIntentWatcher } = require('./services/intents-watcher.js')
+const { schedulerService } = require('./services/scheduler.js')
 require('dotenv').config();
 
 const app = express()
@@ -21,17 +23,17 @@ const auctionsRouter = require('./routes/auctions')
 const intentsRouter = require('./routes/intents')
 const marketsRouter = require('./routes/markets')
 const mevRouter = require('./routes/mev')
+const aiRouter = require('./routes/ai')
 const externalRouter = require('./routes/external');
-const solverRouter = require('./routes/solver.js');
 const { metricsHandler } = require('./utils/metrics.js');
 
 app.use('/api/auctions', auctionsRouter)
 app.use('/api/intents', intentsRouter)
 app.use('/api/markets', marketsRouter)
 app.use('/api/mev', mevRouter)
+app.use('/api/ai', aiRouter)
 app.use('/api/external', externalRouter)
 app.get('/metrics', metricsHandler);
-app.use('/api/solver', solverRouter);
 
 app.get('/', (req, res) => {
   res.send(`GhostLocking MEV! Lets play it fair & square.`)
@@ -69,6 +71,14 @@ async function startServer() {
       console.log(`Health check: http://localhost:${PORT}/health`)
       console.log(`Solver status: http://localhost:${PORT}/api/auctions/solver/status`)
     })
+
+    // Start watchers and scheduler
+    try {
+      startIntentWatcher()
+      schedulerService.start()
+    } catch (e) {
+      console.error('Failed to start watcher/scheduler:', e)
+    }
 
     if (process.env.SOLVER_PRIVATE_KEY) {
       console.log('🤖 Auto-starting solver service...')

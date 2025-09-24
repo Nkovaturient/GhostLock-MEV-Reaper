@@ -1,8 +1,9 @@
+import React from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Check, Shield, Star, Mail } from 'lucide-react'
-import { Card, CardHeader, CardContent } from '@/components/ui/Card'
-import Button from '@/components/ui/Button'
+import { Card, CardHeader, CardContent } from '../components/ui/Card'
+import Button from '../components/ui/Button'
 
 const tiers = [
   {

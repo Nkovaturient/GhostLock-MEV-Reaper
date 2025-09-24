@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { useAccount, useBlockNumber, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { ethers, Signer } from 'ethers'
-import { BlocklockService, type IntentPayload } from '@/lib/blocklock-service'
-import { GHOSTLOCK_INTENTS_ABI } from '@/lib/abis'
-import { CONFIG } from '@/lib/config'
-import { useToast } from '@/stores/toastStore'
+import { BlocklockService, type IntentPayload } from '../lib/blocklock-service'
+import { GHOSTLOCK_INTENTS_ABI } from '../lib/abis'
+import { CONFIG } from '../lib/config'
+import { useToast } from '../stores/toastStore'
 import { useEthersSigner } from './useEthers'
 import { useQueryClient } from '@tanstack/react-query'
-import { addRequestId } from '@/stores/requestIdStore'
+import { addRequestId } from '../stores/requestIdStore'
 
 export function useIntentSubmission() {
   const queryClient = useQueryClient()

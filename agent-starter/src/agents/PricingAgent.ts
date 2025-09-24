@@ -19,7 +19,8 @@ class GhostLockPricingAgent extends Agent {
       6. Fair price discovery mechanisms
       
       Always ensure deterministic fallbacks and validate against external price feeds.`,
-      apiKey
+      apiKey: apiKey,
+      openaiApiKey: process.env.OPENAI_API_KEY,
     })
 
     this.setupCapabilities()
@@ -58,14 +59,27 @@ class GhostLockPricingAgent extends Agent {
       async run({ args, action }) {
         const { intents, referencePrice, marketMetrics, historicalSettlements, epochRandomSeed } = args
         const self = this as GhostLockPricingAgent
+        const response = await this.callIntegration({
+          workspaceId: action!.workspace.id,
+          integrationId: 'agents-v2',
+          details: {
+            endpoint: '/metrics',
+            method: 'POST',
+            data: {
+              text: args.marketMetrics
+            }
+          }
+        })
+
+        console.log(response.output)
         
         try {
           await self.addLogToTask?.({
             workspaceId: action?.workspace?.id || CONFIG.OPENSERV.WORKSPACE_ID,
-            taskId: CONFIG.OPENSERV.AGENT_ID,
+            taskId: CONFIG.OPENSERV.AGENT_ID || action?.me.id as number,
             severity: 'info',
             type: 'text',
-            body: `Starting price computation for ${intents.length} intents with MEV pressure: ${marketMetrics.mevPressure}%`
+            body: `Starting price computation for ${intents.length} intents with MEV pressure: ${marketMetrics.mevPressure}%`, 
           })
         } catch {}
 

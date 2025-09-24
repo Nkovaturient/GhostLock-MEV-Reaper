@@ -1,9 +1,9 @@
-import { useAccount, useBlockNumber, useReadContracts, useWatchContractEvent } from 'wagmi'
+import { useAccount, useBlockNumber, useReadContracts, useReadContract, useWatchContractEvent } from 'wagmi'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { GHOSTLOCK_INTENTS_ABI } from '@/lib/abis'
-import { CONFIG, MARKETS } from '@/lib/config'
+import { GHOSTLOCK_INTENTS_ABI } from '../lib/abis'
+import { CONFIG, MARKETS } from '../lib/config'
 import { ethers } from 'ethers'
-import { markDecrypted } from '@/stores/requestIdStore'
+import { markDecrypted } from '../stores/requestIdStore'
 import { useState } from 'react'
 
 export interface UserIntent {
@@ -52,6 +52,23 @@ export function useUserIntents() {
   
   // Track the highest request ID we've seen from events
   const [highestRequestId, setHighestRequestId] = useState<number>(0)
+
+  // Seed highestRequestId by reading the contract's lastRequestId (handles reloads/missed events)
+  const { data: lastRequestIdOnChain } = useReadContract({
+    chainId: CONFIG.CHAIN_ID,
+    abi: GHOSTLOCK_INTENTS_ABI,
+    address: CONFIG.CONTRACTS.GHOSTLOCK_INTENTS as `0x${string}`,
+    functionName: 'lastRequestId',
+    args: [],
+    query: { enabled: !!CONFIG.CONTRACTS.GHOSTLOCK_INTENTS as any, refetchInterval: 30000 }
+  })
+
+  if (lastRequestIdOnChain) {
+    const onChain = Number(lastRequestIdOnChain as any)
+    if (onChain > highestRequestId) {
+      setHighestRequestId(onChain)
+    }
+  }
   
   // Listen for IntentSubmitted events to track new intents
   useWatchContractEvent({
@@ -62,7 +79,7 @@ export function useUserIntents() {
     onLogs: (logs) => {
       // Update the highest request ID when new intents are submitted
       logs.forEach(log => {
-        const requestId = Number(log.args.requestId)
+        const requestId = Number((log as any).args?.requestId ?? (log as any).args?.[0])
         if (requestId > highestRequestId) {
           setHighestRequestId(requestId)
         }
@@ -88,10 +105,11 @@ export function useUserIntents() {
 
   // Create contracts array for all intents (we'll limit to recent ones for performance)
   const maxIntentsToFetch = 50 // Limit to prevent too many contract calls
-  const startId = Math.max(0, highestRequestId - maxIntentsToFetch + 1)
+  const startId = Math.max(1, highestRequestId - maxIntentsToFetch + 1)
   const endId = highestRequestId
   
-  const contracts = Array.from({ length: endId - startId + 1 }, (_, i) => ({
+  const count = endId >= startId ? (endId - startId + 1) : 0
+  const contracts = Array.from({ length: count }, (_, i) => ({
     chainId: CONFIG.CHAIN_ID,
     abi: GHOSTLOCK_INTENTS_ABI,
     address: CONFIG.CONTRACTS.GHOSTLOCK_INTENTS as `0x${string}`,
@@ -104,7 +122,7 @@ export function useUserIntents() {
     contracts,
     query: {
       enabled: contracts.length > 0 && !!CONFIG.CONTRACTS.GHOSTLOCK_INTENTS,
-      refetchInterval: 60000, // Refresh every 1min
+      refetchInterval: 30000, // Refresh more frequently
     },
   })
 
@@ -141,8 +159,8 @@ export function useUserIntents() {
             decrypted: result.decrypted || '0x'
           }
 
-          // Only include intents for the current user
-          if (contractIntent.requestedBy.toLowerCase() === address.toLowerCase()) {
+          // Only include intents for the current user; guard nulls
+          if (contractIntent.requestedBy && address && contractIntent.requestedBy.toLowerCase() === address.toLowerCase()) {
             const encrypted = contractIntent.ct.v
             
             // Check if contract has decrypted bytes and decode into structured payload

@@ -1,10 +1,10 @@
 import { motion } from 'framer-motion'
 import { Shield, DollarSign, Activity, TrendingUp, TrendingDown, AlertTriangle, Zap, Search, Settings } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
-import { formatCurrency } from '@/lib/utils'
-import { useMEVGlobal, refreshMEVData } from '@/hooks/useMEVData'
-import { useState, useCallback } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card'
+import { Badge } from '../ui/Badge'
+import { formatCurrency } from '../../lib/utils'
+import { useMEVGlobal, refreshMEVData } from '../../hooks/useMEVData'
+import React, { useState, useCallback } from 'react'
 import { useBlockNumber } from 'wagmi'
 
 export default function MEVAnalytics() {
@@ -22,8 +22,6 @@ export default function MEVAnalytics() {
 
   // Use dynamic parameters for MEV data
   const { data: mevData, isLoading, error } = useMEVGlobal(searchParams)
-
-  // Remove automatic refresh - now controlled by search button
 
   const handleAddressChange = (address: string) => {
     // Basic Ethereum address validation

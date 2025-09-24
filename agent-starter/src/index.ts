@@ -35,7 +35,7 @@ class GhostLockAIOrchestrator {
     await this.pricingAgent.start()
     console.log('GhostLock AI Orchestrator online')
   }
-
+  
   async stop() {
     await this.pricingAgent.stop?.()
   }

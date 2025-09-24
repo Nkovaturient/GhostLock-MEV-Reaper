@@ -141,6 +141,23 @@ router.get('/stats', async (req, res) => {
   }
 })
 
+// GET /api/auctions/ai/health - AI connectivity and latency
+router.get('/ai/health', async (req, res) => {
+  try {
+    const start = Date.now()
+    const body = { intents: [{ side: 0, amount: '1', limitPrice: '1', marketId: 0 }], symbol: 'PING' }
+    const r = await fetch(`${req.protocol}://${req.get('host')}/api/ai/compute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    const latencyMs = Date.now() - start
+    res.json({ ok: r.ok, status: r.status, latencyMs })
+  } catch (e) {
+    res.status(200).json({ ok: false, error: e.message || 'failed' })
+  }
+})
+
 // GET /api/auctions/:id - Get specific auction
 router.get('/:id', async (req, res) => {
   try {

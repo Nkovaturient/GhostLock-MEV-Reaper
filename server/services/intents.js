@@ -94,9 +94,10 @@ async function fetchReadyIntents(provider, epoch = null) {
           if (ready && decrypted && decrypted.length > 0) {
             try {
               // Decode the decrypted intent data
-              const [user, side, amount, limitPrice, marketId, intentEpoch] = 
+              const [user, side, amount, limitPrice, marketId, intentEpoch, isDummyFlag] = 
                 ethers.AbiCoder.defaultAbiCoder().decode(
-                  ['address', 'uint8', 'uint256', 'uint256', 'uint8', 'uint256'],
+                  // If contract includes a boolean flag for dummy, decode it; else fallback in catch
+                  ['address', 'uint8', 'uint256', 'uint256', 'uint8', 'uint256', 'bool'],
                   decrypted
                 );
 
@@ -105,9 +106,8 @@ async function fetchReadyIntents(provider, epoch = null) {
                 continue;
               }
 
-              // Check if this is a dummy intent (would need additional field in contract)
-              // For now, we'll assume all intents are real
-              const isDummy = false; // This would be determined by contract logic
+              // Dummy flag from payload if present
+              const isDummy = Boolean(isDummyFlag);
 
               intents.push({
                 requestId: j,
@@ -122,7 +122,29 @@ async function fetchReadyIntents(provider, epoch = null) {
                 isDummy: isDummy
               });
             } catch (decodeError) {
-              console.warn(`Failed to decode intent ${j}:`, decodeError);
+              // Fallback: decode without dummy flag for backwards compatibility
+              try {
+                const [user, side, amount, limitPrice, marketId, intentEpoch] = 
+                  ethers.AbiCoder.defaultAbiCoder().decode(
+                    ['address', 'uint8', 'uint256', 'uint256', 'uint8', 'uint256'],
+                    decrypted
+                  );
+                if (epoch !== null && Number(intentEpoch) !== epoch) continue;
+                intents.push({
+                  requestId: j,
+                  user: user,
+                  side: Number(side),
+                  amount: amount,
+                  limitPrice: limitPrice,
+                  marketId: Number(marketId),
+                  epoch: Number(intentEpoch),
+                  encryptedAt: Number(encryptedAt),
+                  unlockBlock: Number(unlockBlock),
+                  isDummy: false
+                });
+              } catch (e2) {
+                console.warn(`Failed to decode intent ${j}:`, decodeError);
+              }
             }
           }
         } catch (rpcError) {

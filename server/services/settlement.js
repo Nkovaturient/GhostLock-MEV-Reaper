@@ -69,6 +69,7 @@ async function settleBatchTx(signer, requestIds, epoch, marketId, clearingPrice)
       // Add buffer
       const gasLimit = gasEstimate.mul(110).div(100); // +10%
 
+      // Submit via private tx options if supported by provider/relayer
       const tx = await settlementContract.settleBatch(
         requestIds,
         epoch,
@@ -76,7 +77,11 @@ async function settleBatchTx(signer, requestIds, epoch, marketId, clearingPrice)
         clearingPrice,
         {
           maxFeePerGas: ethers.parseUnits("0.2", "gwei"),
-          maxPriorityFeePerGas: ethers.parseUnits("0.2", "gwei")
+          maxPriorityFeePerGas: ethers.parseUnits("0.2", "gwei"),
+          // Flashbots/proprietary: add hints for private relay if middleware picks them up
+          // e.g., custom headers at transport layer; for ethers v6, use a custom provider or signer
+          // place holder below for future integration
+          // type: 2
         }
       );
 

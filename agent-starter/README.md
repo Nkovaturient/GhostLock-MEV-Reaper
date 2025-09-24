@@ -60,10 +60,14 @@ Notes:
 - The included heuristics are intentionally conservative and explainable. They are designed to be extended with live market data, cross-venue quotes, and more sophisticated anomaly detection.
 - Randomization is bounded (e.g., ±10 bps of VWAP) to avoid destabilizing prices while mitigating deterministic exploitation.
 
-## Installation
+## Installation & Build
 
 ```bash
 npm install
+```
+
+```bash
+npm run build
 ```
 
 ## Configuration

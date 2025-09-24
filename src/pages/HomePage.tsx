@@ -1,9 +1,10 @@
+import React from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Shield, Zap, Eye, Lock, TrendingUp, Users, ArrowRight, Github, Twitter, MessageCircle } from 'lucide-react'
-import { Scene3D } from '@/components/3d/Scene3D'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import Button from '@/components/ui/Button'
+import { Scene3D } from '../components/3d/Scene3D'
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
+import Button from '../components/ui/Button'
 
 const features = [
   {

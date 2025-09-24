@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { CONFIG } from '@/lib/config'
-import { BlocklockService } from '@/lib/blocklock-service'
+import { CONFIG } from '../lib/config'
+import { BlocklockService } from '../lib/blocklock-service'
 import { useBlockNumber } from 'wagmi'
 
 export interface AuctionData {
@@ -20,55 +20,14 @@ export interface AuctionData {
 
 export function useAuctionData() {
   return useQuery<AuctionData[]>({
-    queryKey: [''],
+    queryKey: ['auctions'],
     queryFn: async () => {
-      try {
-        const response = await fetch(`${CONFIG.API.SOLVER_URL}`, {
-          cache: 'no-store'
-        })
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-        }
-        
-        const data = await response.json()
-        return data as AuctionData[]
-      } catch (error) {
-        console.error('Failed to fetch auction data:', error)
-        // Return mock data for development
-        return [
-          {
-            id: 'A-1001',
-            market: 'ETH/USDC',
-            clearingPrice: '3120.52',
-            aiPrice: '3118.90',
-            intents: 42,
-            settlementBlock: 12345678,
-            status: 'Settled' as const,
-            volume: 1250000,
-            timestamp: Date.now() - 3600000,
-            epoch: 2468,
-            buyFill: '125.5',
-            sellFill: '125.5'
-          },
-          {
-            id: 'A-1000',
-            market: 'WBTC/USDC',
-            clearingPrice: '64123.00',
-            aiPrice: '64100.12',
-            intents: 11,
-            settlementBlock: 12345500,
-            status: 'Settling' as const,
-            volume: 890000,
-            timestamp: Date.now() - 7200000,
-            epoch: 2467,
-            buyFill: '8.2',
-            sellFill: '8.2'
-          }
-        ]
-      }
+      const url = `${CONFIG.API.SOLVER_URL}/ai/health`;
+      const response = await fetch(url, { cache: 'no-store' })
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      return (await response.json()) as AuctionData[]
     },
-    refetchInterval: 60000, // Refresh every 1hr
+    refetchInterval: 15000,
   })
 }
 

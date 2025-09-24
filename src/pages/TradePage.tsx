@@ -1,12 +1,12 @@
 import { motion } from 'framer-motion'
 import { useAccount } from 'wagmi'
 import { AlertTriangle } from 'lucide-react'
-import IntentSubmissionForm from '@/components/trading/IntentSubmissionForm'
-import UserIntentsTable from '@/components/dashboard/UserIntentsTable'
-import { Card, CardContent } from '@/components/ui/Card'
-import { useEffect, useState } from 'react'
-import { useNetworkConfig } from '@/hooks/useNetworkConfig'
-import { useEthersProvider } from '@/hooks/useEthers'
+import IntentSubmissionForm from '../components/trading/IntentSubmissionForm'
+import UserIntentsTable from '../components/dashboard/UserIntentsTable'
+import { Card, CardContent } from '../components/ui/Card'
+import React, { useEffect, useState } from 'react'
+import { useNetworkConfig } from '../hooks/useNetworkConfig'
+import { useEthersProvider } from '../hooks/useEthers'
 
 export default function TradePage() {
   const { isConnected } = useAccount()

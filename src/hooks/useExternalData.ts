@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { CONFIG } from '@/lib/config'
+import { CONFIG } from '../lib/config'
 
 export interface CryptoData {
   ethereum: {

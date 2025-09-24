@@ -1,13 +1,13 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Activity, Search, Filter, TrendingUp, Users, Clock, AlertCircle } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
-import Button from '@/components/ui/Button'
-import Input from '@/components/ui/Input'
-import Select from '@/components/ui/Select'
-import { useAuctionData } from '@/hooks/useAuctionData'
-import { formatCurrency, formatNumber } from '@/lib/utils'
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card'
+import { Badge } from '../ui/Badge'
+import Button from '../ui/Button'
+import Input from '../ui/Input'
+import Select from '../ui/Select'
+import { useAuctionData } from '../../hooks/useAuctionData'
+import { formatCurrency, formatNumber } from '../../lib/utils'
 
 const statusOptions = [
   { value: 'all', label: 'All Status' },
@@ -27,13 +27,13 @@ export default function AuctionExplorer() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [marketFilter, setMarketFilter] = useState('all')
-
+  
   const filteredAuctions = auctions?.filter(auction => {
     const matchesSearch = auction.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         auction.market.toLowerCase().includes(searchTerm.toLowerCase())
+      auction.market.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || auction.status.toLowerCase() === statusFilter
     const matchesMarket = marketFilter === 'all' || auction.market === marketFilter
-    
+
     return matchesSearch && matchesStatus && matchesMarket
   }) || []
 
@@ -76,31 +76,31 @@ export default function AuctionExplorer() {
       {/* Stats Cards */}
       <div className="grid md:grid-cols-4 gap-6">
         {[
-          { 
-            label: 'Total Volume', 
-            value: formatCurrency(totalVolume), 
-            icon: TrendingUp, 
+          {
+            label: 'Total Volume',
+            value: formatCurrency(totalVolume),
+            icon: TrendingUp,
             change: '+12.5%',
             color: 'text-green-400'
           },
-          { 
-            label: 'Total Auctions', 
-            value: auctions?.length.toString() || '0', 
-            icon: Activity, 
+          {
+            label: 'Total Auctions',
+            value: auctions?.length.toString() || '0',
+            icon: Activity,
             change: `+${settledCount}`,
             color: 'text-blue-400'
           },
-          { 
-            label: 'Avg Intents', 
-            value: avgIntents.toString(), 
-            icon: Users, 
+          {
+            label: 'Avg Intents',
+            value: avgIntents.toString(),
+            icon: Users,
             change: '+8.2%',
             color: 'text-purple-400'
           },
-          { 
-            label: 'Avg Settlement', 
-            value: '42s', 
-            icon: Clock, 
+          {
+            label: 'Avg Settlement',
+            value: '42s',
+            icon: Clock,
             change: '-5.1%',
             color: 'text-orange-400'
           }

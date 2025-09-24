@@ -1,10 +1,19 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAccount, useWatchContractEvent } from "wagmi";
 import { ethers } from "ethers";
-import { GHOSTLOCK_INTENTS_ABI } from "@/lib/abis";
+import { GHOSTLOCK_INTENTS_ABI } from "../lib/abis";
 import { useEthersProvider, useEthersSigner } from "./useEthers";
-import { CONFIG } from "@/lib/config";
+import { CONFIG } from "../lib/config";
 import { useState } from "react";
+
+export interface tempFig{
+  id: number;
+  requestedBy: string;
+  encryptedAt: any;
+  decryptedAt: any;
+  message: string;
+  ready: boolean;
+}
 
 export const useExplorer = (setActiveTab?: (tab: string) => void) => {
   const signer = useEthersSigner();
@@ -84,7 +93,7 @@ export const useExplorer = (setActiveTab?: (tab: string) => void) => {
         const startId = Math.max(1, highestRequestId - 19);
         console.log("Fetching intents from", startId, "to", highestRequestId);
         
-        const temp = [];
+        const temp: tempFig[] = [];
         for (let i = startId; i <= highestRequestId; i++) {
           try {
             const intent = await contract.intents(i);

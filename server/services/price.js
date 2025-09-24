@@ -1,5 +1,6 @@
 const { fetchReferencePrice } = require("./intents.js");
 const { CONFIG } = require("../config.js");
+const { ethers } = require("ethers");
 
 /**
  * Computes uniform clearing price by minimizing | totalBuy - totalSell |
@@ -7,7 +8,7 @@ const { CONFIG } = require("../config.js");
  * If a reference price is available, break ties by closeness to reference.
  * Enhanced with AI-assisted optimization when available.
  */
-async function computeUniformClearingPrice(intents, symbol = "ETH-USD") {
+async function computeUniformClearingPrice(intents, symbol = "ETH-USD", epochSeed = null) {
   if (!intents?.length) return { clearingPrice: 0n, totals: { buyBase: 0n, sellBase: 0n }, ref: null, aiPrice: null };
 
   // 1) candidate grid = unique limit prices
@@ -37,6 +38,7 @@ async function computeUniformClearingPrice(intents, symbol = "ETH-USD") {
   let best = prices[0] ?? 1n;
   let bestDiff = (1n << 255n);
   let bestTieBias = (1n << 255n);
+  let bestSeedHash = null;
 
   // 4) search with AI guidance
   for (const p of prices) {
@@ -59,10 +61,24 @@ async function computeUniformClearingPrice(intents, symbol = "ETH-USD") {
       bias = bias < aiBias ? bias : aiBias; // Prefer the smaller bias
     }
 
-    if (diff < bestDiff || (diff === bestDiff && bias < bestTieBias)) {
+    // Optional third tie-breaker using epochSeed for provable ordering
+    let seedHash = null;
+    if (epochSeed) {
+      const priceHex = ethers.zeroPadValue(ethers.toBeHex(p), 32)
+      seedHash = ethers.keccak256(ethers.concat([epochSeed, priceHex]))
+    }
+
+    const isBetter = (
+      diff < bestDiff ||
+      (diff === bestDiff && bias < bestTieBias) ||
+      (diff === bestDiff && bias === bestTieBias && epochSeed && seedHash && (!bestSeedHash || seedHash < bestSeedHash))
+    )
+
+    if (isBetter) {
       bestDiff = diff;
       bestTieBias = bias;
       best = p;
+      bestSeedHash = seedHash;
     }
   }
 
@@ -89,48 +105,99 @@ async function computeUniformClearingPrice(intents, symbol = "ETH-USD") {
  * @param {string} symbol - Trading pair symbol
  * @returns {Promise<bigint>} AI-suggested clearing price
  */
+// async function computeAIClearingPrice(intents, referencePrice, symbol) {
+//   const upstream = CONFIG.AI.UPSTREAM_URL || CONFIG.AI.MODEL_URL
+//   if (!upstream) {
+//     throw new Error('AI upstream URL not configured');
+//   }
+
+//   try {
+//     // Prepare features for AI model
+//     const features = {
+//       intents: intents.map(intent => ({
+//         requestId: intent.requestId,
+//         side: intent.side,
+//         amount: intent.amount.toString(),
+//         limitPrice: intent.limitPrice.toString(),
+//         marketId: intent.marketId
+//       })),
+//       referencePrice: referencePrice?.toString() || null,
+//       symbol,
+//       timestamp: Date.now()
+//     };
+
+//     // Call upstream agent endpoint (proxied or direct)
+//     const response = await fetch(upstream, {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/json',
+//       },
+//       body: JSON.stringify(features),
+//       signal: AbortSignal.timeout(CONFIG.AI.TIMEOUT_MS || CONFIG.PRICE_FEED.TIMEOUT_MS)
+//     });
+
+//     if (!response.ok) {
+//       throw new Error(`AI model request failed: ${response.status}`);
+//     }
+
+//     const result = await response.json();
+    
+//     if (result.confidence < CONFIG.AI.CONFIDENCE_THRESHOLD) {
+//       throw new Error(`AI confidence too low: ${result.confidence}`);
+//     }
+
+//     return BigInt(result.clearingPrice);
+//   } catch (error) {
+//     console.error('AI price computation error:', error);
+//     throw error;
+//   }
+// }
+
 async function computeAIClearingPrice(intents, referencePrice, symbol) {
-  if (!CONFIG.AI.MODEL_URL) {
-    throw new Error('AI model URL not configured');
-  }
+  // Build features payload expected by server
+  const features = {
+    intents: intents.map(it => ({
+      requestId: it.requestId,
+      side: it.side,
+      amount: it.amount.toString(),
+      limitPrice: it.limitPrice.toString(),
+      marketId: it.marketId
+    })),
+    referencePrice: referencePrice ? String(referencePrice) : null,
+    symbol,
+    timestamp: Date.now()
+  };
+
+  // Call local backend AI endpoint
+  const backendUrl = 'http://localhost:4800/api/ai/compute'; //CONFIG.AI.BACKEND_URL || 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CONFIG.AI.TIMEOUT_MS || 10000);
 
   try {
-    // Prepare features for AI model
-    const features = {
-      intents: intents.map(intent => ({
-        side: intent.side,
-        amount: intent.amount.toString(),
-        limitPrice: intent.limitPrice.toString(),
-        marketId: intent.marketId
-      })),
-      referencePrice: referencePrice?.toString() || null,
-      symbol,
-      timestamp: Date.now()
-    };
-
-    const response = await fetch(CONFIG.AI.MODEL_URL, {
+    const r = await fetch(backendUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(features),
-      signal: AbortSignal.timeout(CONFIG.PRICE_FEED.TIMEOUT_MS)
+      signal: controller.signal
     });
+    clearTimeout(timeout);
 
-    if (!response.ok) {
-      throw new Error(`AI model request failed: ${response.status}`);
+    if (!r.ok) {
+      const text = await r.text();
+      throw new Error(`AI backend error: ${r.status} ${text}`);
     }
 
-    const result = await response.json();
-    
-    if (result.confidence < CONFIG.AI.CONFIDENCE_THRESHOLD) {
-      throw new Error(`AI confidence too low: ${result.confidence}`);
+    const json = await r.json();
+    if (!json || !json.clearingPrice) {
+      throw new Error('Invalid AI response shape');
     }
 
-    return BigInt(result.clearingPrice);
-  } catch (error) {
-    console.error('AI price computation error:', error);
-    throw error;
+    // Convert to BigInt
+    return BigInt(json.clearingPrice);
+  } catch (err) {
+    clearTimeout(timeout);
+    console.error("computeAIClearingPrice failed:", err.message || err);
+    throw err;
   }
 }
 

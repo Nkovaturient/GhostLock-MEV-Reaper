@@ -1,14 +1,14 @@
 import { motion } from 'framer-motion'
 import { TrendingUp, TrendingDown, Activity, DollarSign, Shield, Network, RefreshCw, CheckCircle, Clock, Globe } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
-import { formatCurrency, formatPercentage } from '@/lib/utils'
-import { useMarkets, useMarketStats, refreshMarketData } from '@/hooks/useMarketData'
-import { useBlockchainData, useNetworkStats, refreshBlockchainData } from '@/hooks/useBlockchainData'
-import { useCryptoData, useDefiData, useExternalMEVData, refreshExternalData } from '@/hooks/useExternalData'
-import { useState } from 'react'
-import MEVAnalytics from '@/components/analytics/MEVAnalytics'
-import { useExplorer } from '@/hooks/useExplorer'
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
+import { Badge } from '../components/ui/Badge'
+import { formatCurrency, formatPercentage } from '../lib/utils'
+import { useMarkets, useMarketStats, refreshMarketData } from '../hooks/useMarketData'
+import { useBlockchainData, useNetworkStats, refreshBlockchainData } from '../hooks/useBlockchainData'
+import { useCryptoData, useDefiData, useExternalMEVData, refreshExternalData } from '../hooks/useExternalData'
+import React, { useState } from 'react'
+import MEVAnalytics from '../components/analytics/MEVAnalytics'
+import { useExplorer } from '../hooks/useExplorer'
 
 export default function AnalyticsPage() {
   const { data: markets, isLoading: marketsLoading, error: marketsError } = useMarkets()

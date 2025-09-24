@@ -11,6 +11,7 @@ import AuctionPage from './pages/AuctionPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import '@rainbow-me/rainbowkit/styles.css'
 import RevenuePage from './pages/RevenuePage'
+import React from 'react'
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -28,7 +28,8 @@ const CONFIG = {
     PRIVATE_KEY: process.env.SOLVER_PRIVATE_KEY,
     GAS_LIMIT: 100_000,
     MAX_RETRIES: 3,
-    RETRY_DELAY_MS: 5000
+    RETRY_DELAY_MS: 5000,
+    MAX_BATCH_PULL: 50
   },
 
   PRICE_FEED: {
@@ -48,8 +49,11 @@ const CONFIG = {
   AI: {
     ENABLED: process.env.AI_ENABLED === "true",
     MODEL_URL: process.env.AI_MODEL_URL,
+    BACKEND_URL: process.env.BACKEND_URL,
+    UPSTREAM_URL: process.env.AI_UPSTREAM_URL || process.env.AI_MODEL_URL,
     CONFIDENCE_THRESHOLD: 0.8,
-    FALLBACK_TO_HEURISTIC: true
+    FALLBACK_TO_HEURISTIC: true,
+    TIMEOUT_MS: parseInt(process.env.AI_TIMEOUT_MS || '8000', 10)
   },
 
   // Scheduler config
