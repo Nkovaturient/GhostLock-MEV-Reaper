@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 4800
 
 // Middleware
 app.use(cors({
-  origin: ['https://ghost-lock-mev-reaper.vercel.app', 'https://ghostlock.vercel.app', 'http://localhost:3000'],
+  origin: ['https://ghost-lock-mev-reaper.vercel.app', 'https://ghostlock.vercel.app', 'http://localhost:3000', 'http://localhost:3001'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -26,6 +26,8 @@ const mevRouter = require('./routes/mev')
 const aiRouter = require('./routes/ai')
 const externalRouter = require('./routes/external');
 const { metricsHandler } = require('./utils/metrics.js');
+const networkStats = require("./routes/network-stats");
+
 
 app.use('/api/auctions', auctionsRouter)
 app.use('/api/intents', intentsRouter)
@@ -34,6 +36,7 @@ app.use('/api/mev', mevRouter)
 app.use('/api/ai', aiRouter)
 app.use('/api/external', externalRouter)
 app.get('/metrics', metricsHandler);
+app.get('/netstats', networkStats)
 
 app.get('/', (req, res) => {
   res.send(`GhostLocking MEV! Lets play it fair & square.`)

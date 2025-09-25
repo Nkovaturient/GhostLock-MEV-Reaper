@@ -28,7 +28,7 @@ export default function AuctionExplorer() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [marketFilter, setMarketFilter] = useState('all')
   
-  const filteredAuctions = auctions?.filter(auction => {
+  const filteredAuctions = auctions && auctions.length > 0 && auctions?.filter(auction => {
     const matchesSearch = auction.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       auction.market.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || auction.status.toLowerCase() === statusFilter
