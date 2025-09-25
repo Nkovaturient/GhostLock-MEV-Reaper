@@ -20,9 +20,14 @@ GhostLock: MEV Reaper is a cutting-edge DeFi platform that protects traders from
 - **🔒 Blocklock Encryption**: Time-locked encryption hides trading intents until execution
 - **🎲 VRF Ordering**: Verifiable Random Function ensures fair transaction sequencing  
 - **⚡ Batch Auctions**: Uniform pricing eliminates front-running opportunities
-- **🤖 AI Optimization**: Machine learning optimizes settlement prices and reduces slippage
-- **🛡️ MEV Protection**: Advanced shield against sandwich attacks and front-running
-- **⚖️ Fair Access**: Equal opportunity trading for all participants
+- **🤖 Trade Intents Settlement**:   
+  - Future: Solver competition board to ensure liveness + decentralization.  
+- **📊 Transparency Panel** *(new)*:  
+  - Gas fee estimate,  
+  - Unlock block + decryption ETA (calculated dynamically per network),  
+  - Expected receive amount via 1inch API.  
+- **💳 Mock ERC-20 Tokens**: ETH, USDC, WETH for dev/test.  
+
 
 ## 🏗️ Architecture
 
@@ -45,12 +50,45 @@ GhostLock: MEV Reaper is a cutting-edge DeFi platform that protects traders from
 - **EpochRNG**: Provides verifiable randomness for fair ordering
 - **MockTokens**: Test tokens for development and testing
 
+## ⚔️ How GhostLock is Different
+
+**Compared to other MEV-resistant efforts, GhostLock stands apart:**
+
+- **Flashbots / SUAVE**  
+  - Focus: private mempools + off-chain transaction sequencing.  
+  - Limitation: requires trust in relays / builders; opaque order-flow markets.  
+  - **GhostLock advantage**: no trusted relay; instead, ciphertexts are *natively encrypted on-chain* and decrypted only after safe block height. No privileged actors.
+
+- **CoW Protocol**  
+  - Focus: batch auctions with solver competition.  
+  - Limitation: intents visible before clearing → still exploitable; solvers can extract flow.  
+  - **GhostLock advantage**: adds **Blocklock encryption + VRF randomization**, so intents remain hidden until reveal, then shuffled to remove sequencing edge. GhostLock inherits batch auction fairness but *eliminates pre-reveal leakage*.
+
+- **MEV-Boost / PBS**  
+  - Focus: splitting block builders and proposers.  
+  - Limitation: improves validator decentralization but not user-level trade protection.  
+  - **GhostLock advantage**: *user-first MEV protection*, solving leakage at the transaction level.
+
+- **Secret Network / TEEs**  
+  - Focus: hardware-enforced secrecy.  
+  - Limitation: trust in hardware enclaves, supply-chain risk.  
+  - **GhostLock advantage**: cryptographic, open, and verifiable; no hardware black box.
+
+
+## ⚠️ Limitations & Edge Cases
+
+- **Decryption timing mismatch**: If unlock block < inclusion block, could allow premature reveal. Mitigation → safety margins + epoch alignment.  
+- **Solver centralization**: Current AI call is centralized; roadmap includes **solver marketplace + bond/slashing** to prevent manipulation.  
+- **Metadata leakage**: Ciphertext size/timing may leak info. Roadmap → padding + dummy intents.  
+- **Latency vs UX tradeoff**: Batch auctions add delay (~minutes). Mitigation → deploy on L2 for faster block times.  
+- **Oracle/API dependency**: Reliance on 1inch & external VRF oracles. Add fallback quoting + distributed randomness in roadmap.  
+
+
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Node.js 18+ and npm
-- Git
-- MetaMask or compatible Web3 wallet
+
 
 ### Installation
 
@@ -125,11 +163,8 @@ npm run server
 ## Future Roadmap
 
 - **On-chain verified randomness Intefrations** → Calling the Drand( VRF) verification baked directly into EpochRNG contracts, so ordering proofs are trustless.
-- **Batch-Auctions Settlemets** → via AI enhanced regulations
 - **Liveness guarantees** → Bond + slashing for missed reveals, fallback threshold revealers, and permissionless settlement calls so no one can grief the auction.
 - **Privacy hardening** → Add ciphertext(intent) padding, dummy intents, and batch-only publication so metadata leakage doesn’t kill the whole “encrypted” vibe.
-- **Tests & security** → Foundry fuzz, audits, invariant checks
-- **UI polish** → countdowns, public view mode, better status UX
 
 ## 🤝 Contributing
 
