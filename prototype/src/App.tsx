@@ -3,12 +3,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
 import { RainbowKitProvider } from '@rainbow-me/rainbowkit'
 import { wagmiConfig } from './lib/wagmi'
-import { Toaster } from '../../../src/components/ui/Toaster'
+import { Toaster } from '../../src/components/ui/Toaster'
 import Navbar from './components/layout/Navbar'
 import HomePage from './pages/HomePage'
 import TradePage from './pages/TradePage'
 import AuctionPage from './pages/AuctionPage'
-import AnalyticsPage from './pages/AnalyticsPage'
 import DashboardPage from './pages/DashboardPage'
 import AttackerLabPage from './pages/AttackerLabPage'
 import DocsPage from './pages/DocsPage'
@@ -41,7 +40,6 @@ function App() {
                   <Route path="/" element={<HomePage />} />
                   <Route path="/trade" element={<TradePage />} />
                   <Route path="/auctions" element={<AuctionPage />} />
-                  <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/attacker-lab" element={<AttackerLabPage />} />
                   <Route path="/docs" element={<DocsPage />} />

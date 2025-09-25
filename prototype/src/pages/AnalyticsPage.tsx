@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
 import { Shield, Activity, TrendingUp, Eye } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../src/components/ui/Card'
-import MEVAnalytics from '../../../../src/components/analytics/MEVAnalytics'
-import { Badge } from '../../../../src/components/ui/Badge'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../src/components/ui/Card'
+import MEVAnalytics from '../../../src/components/analytics/MEVAnalytics'
+import { Badge } from '../../../src/components/ui/Badge'
 
 export default function AnalyticsPage() {
   // Mock privacy metrics for demonstration

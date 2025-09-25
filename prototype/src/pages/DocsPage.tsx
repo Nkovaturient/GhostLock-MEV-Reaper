@@ -1,8 +1,7 @@
 import { motion } from 'framer-motion'
-import { Book, Lock, Eye, TrendingUp, Shield, Zap, Code, ExternalLink } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../src/components/ui/Card'
-import Button from '../../../../src/components/ui/Button'
-import { Badge } from '../../../../src/components/ui/Badge'
+import { Book, Lock, Eye, TrendingUp, Shield, Zap, ExternalLink } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../src/components/ui/Card'
+import Button from '../../../src/components/ui/Button'
 
 export default function DocsPage() {
   const processSteps = [

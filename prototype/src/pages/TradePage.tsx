@@ -1,9 +1,10 @@
 import { motion } from 'framer-motion'
 import { useAccount } from 'wagmi'
 import { AlertTriangle, Shield } from 'lucide-react'
-import EnhancedIntentForm from '../components/trading/EnhancedIntentForm'
-import UserIntentsTable from '../../../../src/components/dashboard/UserIntentsTable'
-import { Card, CardContent } from '../../../../src/components/ui/Card'
+// import EnhancedIntentForm from '../components/trading/EnhancedIntentForm'
+import UserIntentsTable from '../../../src/components/dashboard/UserIntentsTable'
+import { Card, CardContent } from '../../../src/components/ui/Card'
+import DynamicIntentForm from '../components/trading/DynamicIntentForm'
 
 export default function TradePage() {
   const { isConnected } = useAccount()
@@ -72,7 +73,7 @@ export default function TradePage() {
 
         {/* Enhanced Intent Submission Form */}
         <div className="mb-12">
-          <EnhancedIntentForm />
+          <DynamicIntentForm />
         </div>
 
         {/* User Intents Table */}

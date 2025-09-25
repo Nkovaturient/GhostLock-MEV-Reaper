@@ -2,16 +2,14 @@ import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { Menu, X, Shield, Activity, BarChart3, Zap, User, Crosshair, Book } from 'lucide-react'
-import { useAccount, useSwitchChain } from 'wagmi'
-import { cn } from '../../../src/lib/utils'
-import { CONFIG, getNetworkConfig, isMainnet, isSepolia } from '../lib/config'
+import { Menu, X, Shield, Zap, User, Crosshair, Book } from 'lucide-react'
+import { cn } from '../../../../src/lib/utils'
+import { CONFIG } from '../../lib/config'
 import NetworkSwitcher from '../ui/NetworkSwitcher'
 
 const navigation = [
   { name: 'Trade', href: '/trade', icon: Zap },
-  { name: 'Auctions', href: '/auctions', icon: Activity },
-  { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+  // { name: 'Auctions', href: '/auctions', icon: Activity },
   { name: 'Dashboard', href: '/dashboard', icon: User },
   { name: 'Attacker Lab', href: '/attacker-lab', icon: Crosshair },
   { name: 'Docs', href: '/docs', icon: Book },
@@ -20,7 +18,6 @@ const navigation = [
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
   const location = useLocation()
-  const { chainId } = useAccount()
 
   return (
     <nav className="sticky top-0 z-40 glass-effect border-b border-white/10">

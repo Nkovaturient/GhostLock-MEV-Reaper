@@ -4,7 +4,6 @@ import { ChevronDown, Wifi, WifiOff } from 'lucide-react'
 import { useAccount, useSwitchChain } from 'wagmi'
 import { baseSepolia, base } from 'wagmi/chains'
 import { cn } from '../../../../src/lib/utils'
-import { getNetworkConfig, isMainnet, isSepolia } from '../lib/config'
 
 const networks = [
   {
@@ -88,7 +87,6 @@ export default function NetworkSwitcher() {
               
               {networks.map((network) => {
                 const isActive = chainId === network.chain.id
-                const networkConfig = getNetworkConfig(network.chain.id)
                 
                 return (
                   <button

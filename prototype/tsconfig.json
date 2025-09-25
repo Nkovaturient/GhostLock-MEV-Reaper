@@ -6,7 +6,8 @@
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
-    "allowImports": true,
+    "allowJs": true,
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
@@ -23,6 +24,6 @@
       "@agent/*": ["../agent-starter/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "../server/routes/network-stats.js", "vite-env.d.ts", "env.d.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

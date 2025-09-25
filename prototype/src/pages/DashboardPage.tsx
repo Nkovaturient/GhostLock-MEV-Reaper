@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
 import { useAccount } from 'wagmi'
 import { User, AlertCircle } from 'lucide-react'
-import UserIntentsTable from '../../../../src/components/dashboard/UserIntentsTable'
-import { Card, CardContent } from '../../../../src/components/ui/Card'
+import UserIntentsTable from '../../../src/components/dashboard/UserIntentsTable'
+import { Card, CardContent } from '../../../src/components/ui/Card'
 
 export default function DashboardPage() {
   const { isConnected, address } = useAccount()

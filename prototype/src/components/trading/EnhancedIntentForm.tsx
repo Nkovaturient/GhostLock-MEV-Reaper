@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAccount, useBlockNumber } from 'wagmi'
-import { Shield, Settings, Info, AlertCircle } from 'lucide-react'
+import { Shield, Settings, Info } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../src/components/ui/Card'
 import Button from '../../../../src/components/ui/Button'
 import Input from '../../../../src/components/ui/Input'
 import Select from '../../../../src/components/ui/Select'
-import { Badge } from '../../../../src/components/ui/Badge'
-import { useIntentSubmission } from '../../../../src/hooks/useIntentSubmission'
 import { useEpochInfo } from '../../../../src/hooks/useAuctionData'
-import { MARKETS, CONFIG } from '../lib/config'
+import { useIntentSubmission } from '../../../../src/hooks/useIntentSubmission'
+import { MARKETS, CONFIG } from '../../lib/config'
 import { formatNumber } from '../../../../src/lib/utils'
 import PrivacyHealthIndicator from '../ui/PrivacyHealthIndicator'
 
@@ -30,7 +29,7 @@ export default function EnhancedIntentForm() {
   const { isConnected } = useAccount()
   const { data: blockNumber } = useBlockNumber({ watch: true })
   const { data: epochInfo } = useEpochInfo()
-  const { submitIntent, isSubmitting, lastRequestId, lastTxHash, isConfirming, receipt } = useIntentSubmission()
+  const { submitIntent, isSubmitting, lastRequestId, lastTxHash } = useIntentSubmission()
 
   // Form state
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
@@ -81,8 +80,7 @@ export default function EnhancedIntentForm() {
         limitPrice,
         slippageBps: Number(slippageBps),
         marketId: Number(marketId),
-        targetBlock,
-        privacyConfig // Pass privacy configuration
+        targetBlock
       })
 
       setAmount('')

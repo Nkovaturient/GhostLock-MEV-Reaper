@@ -16,7 +16,7 @@ export default defineConfig({
     global: 'globalThis',
   },
   optimizeDeps: {
-    include: ['blocklock-js', 'ethers']
+    include: ['blocklock-js', 'ethers'],
   },
   server: {
     port: 3001, // Different port to avoid conflicts
@@ -24,7 +24,8 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:4000',
         changeOrigin: true
-      }
+      },
     }
+
   }
 })

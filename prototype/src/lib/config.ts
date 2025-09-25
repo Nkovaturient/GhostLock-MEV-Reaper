@@ -1,4 +1,3 @@
-// Enhanced configuration with network switching support
 export const NETWORKS = {
   BASE_SEPOLIA: {
     chainId: 84532,

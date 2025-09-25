@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Shield, Zap, Eye, Lock, TrendingUp, Users, ArrowRight, Github, Twitter, MessageCircle, Crosshair } from 'lucide-react'
-import { Scene3D } from '../../../../src/components/3d/Scene3D'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../src/components/ui/Card'
-import Button from '../../../../src/components/ui/Button'
+import { Shield, Eye, Lock, TrendingUp, ArrowRight, Github, Twitter, MessageCircle, Crosshair, BarChart3 } from 'lucide-react'
+import { Scene3D } from '../../../src/components/3d/Scene3D'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../src/components/ui/Card'
+import Button from '../../../src/components/ui/Button'
 import { CONFIG } from '../lib/config'
 
 const features = [

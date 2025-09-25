@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
-import { Activity, Zap, Brain, TrendingUp } from 'lucide-react'
-import AuctionExplorer from '../../../../src/components/auctions/AuctionExplorer'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../src/components/ui/Card'
-import { Badge } from '../../../../src/components/ui/Badge'
+import { Brain, TrendingUp } from 'lucide-react'
+import AuctionExplorer from '../../../src/components/auctions/AuctionExplorer'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../src/components/ui/Card'
+import { Badge } from '../../../src/components/ui/Badge'
 
 export default function AuctionPage() {
   return (

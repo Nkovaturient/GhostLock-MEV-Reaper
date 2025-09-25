@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Crosshair, AlertTriangle, Shield, TrendingDown, Play, Pause, RotateCcw } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../src/components/ui/Card'
-import Button from '../../../../src/components/ui/Button'
-import { Badge } from '../../../../src/components/ui/Badge'
-import { cn } from '../../../../src/lib/utils'
+import { Crosshair, AlertTriangle, Shield, Play, Pause, RotateCcw, TrendingUp, Eye } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../src/components/ui/Card'
+import Button from '../../../src/components/ui/Button'
+import { Badge } from '../../../src/components/ui/Badge'
+import { cn } from '../../../src/lib/utils'
 
 interface AttackConfig {
   sophistication: 'naive' | 'heuristic' | 'advanced'
@@ -105,14 +105,14 @@ export default function AttackerLabPage() {
     setAttackResults([])
   }
 
-  const getStatusColor = (status: AttackResult['status']) => {
-    switch (status) {
-      case 'failed': return 'attack-failed'
-      case 'blocked': return 'attack-failed'
-      case 'partial': return 'attack-partial'
-      default: return 'attack-successful'
-    }
-  }
+  // const getStatusColor = (status: AttackResult['status']) => {
+  //   switch (status) {
+  //     case 'failed': return 'attack-failed'
+  //     case 'blocked': return 'attack-failed'
+  //     case 'partial': return 'attack-partial'
+  //     default: return 'attack-successful'
+  //   }
+  // }
 
   const totalAttemptedProfit = attackResults.reduce((sum, result) => sum + result.attemptedProfit, 0)
   const totalActualProfit = attackResults.reduce((sum, result) => sum + result.actualProfit, 0)
@@ -372,25 +372,25 @@ export default function AttackerLabPage() {
                   name: 'Blocklock Encryption',
                   description: 'Intents hidden until execution',
                   effectiveness: '99.8%',
-                  icon: Lock
+                  icon: `${Lock}`
                 },
                 {
                   name: 'VRF Ordering',
                   description: 'Fair transaction sequencing',
                   effectiveness: '100%',
-                  icon: Shield
+                  icon: `${Shield}`
                 },
                 {
                   name: 'Batch Settlement',
                   description: 'Uniform price clearing',
                   effectiveness: '97.2%',
-                  icon: TrendingUp
+                  icon: `${TrendingUp}`
                 },
                 {
                   name: 'Privacy Obfuscation',
                   description: 'Dummy intents and padding',
                   effectiveness: '94.5%',
-                  icon: Eye
+                  icon: `${Eye}`
                 }
               ].map((mechanism, index) => (
                 <motion.div
@@ -401,7 +401,7 @@ export default function AttackerLabPage() {
                   className="p-4 bg-ghost-800/30 rounded-lg border border-ghost-700"
                 >
                   <div className="flex items-center space-x-3 mb-2">
-                    <mechanism.icon className="w-5 h-5 text-green-400" />
+                    <span className="w-5 h-5 text-green-400">{mechanism.icon}</span>
                     <span className="font-medium text-white">{mechanism.name}</span>
                   </div>
                   <p className="text-sm text-ghost-400 mb-2">{mechanism.description}</p>
