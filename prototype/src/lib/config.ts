@@ -26,13 +26,12 @@ export const NETWORKS = {
   ARBITRUM_ONE: {
     chainId: 42161,
     name: 'Arbitrum One',
-    rpcUrl: import.meta.env.VITE_ARBITRUM_ONE_RPC_URL || 'https://arb1.arbitrum.io/rpc' || 'wss://arbitrum-one-rpc.publicnode.com',
+    rpcUrl: import.meta.env.VITE_ARBITRUM_ONE_RPC_URL || 'https://arb1.arbitrum.io/rpc',
     contracts: {
-      GHOSTLOCK_INTENTS: import.meta.env.VITE_ARBITRUM_GHOSTLOCK_INTENTS_ADDRESS || '0x...', // Update with your contract address
-      BATCH_SETTLEMENT: import.meta.env.VITE_ARBITRUM_BATCH_SETTLEMENT_ADDRESS || '0x...',
-      EPOCH_RNG: import.meta.env.VITE_ARBITRUM_EPOCH_RNG_ADDRESS || '0x...',
-      MOCK_ETH: import.meta.env.VITE_ARBITRUM_MOCK_ETH_ADDRESS || '0x...',
-      MOCK_USDC: import.meta.env.VITE_ARBITRUM_MOCK_USDC_ADDRESS || '0x...',
+      GHOSTLOCK_INTENTS: import.meta.env.VITE_ARBITRUM_GHOSTLOCK_INTENTS_ADDRESS as string,
+      BATCH_SETTLEMENT: import.meta.env.VITE_ARBITRUM_BATCH_SETTLEMENT_ADDRESS as string,
+      EPOCH_RNG: import.meta.env.VITE_ARBITRUM_EPOCH_RNG_ADDRESS as string,
+      MOCK_ETH: import.meta.env.VITE_ARBITRUM_MOCK_ETH_ADDRESS as string,
     }
   },
 } as const
