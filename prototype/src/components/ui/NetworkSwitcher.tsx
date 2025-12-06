@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence} from 'framer-motion'
 import { ChevronDown, Wifi, WifiOff } from 'lucide-react'
 import { useAccount, useSwitchChain } from 'wagmi'
-import { baseSepolia, base } from 'wagmi/chains'
+import { baseSepolia, base, arbitrum, arbitrumSepolia } from 'wagmi/chains'
 import { cn } from '../../../../src/lib/utils'
 
 const networks = [
@@ -21,6 +21,22 @@ const networks = [
     color: 'text-green-400',
     bgColor: 'bg-green-500/20',
     borderColor: 'border-green-500/30'
+  },
+  {
+    chain: arbitrum,
+    name: 'Arbitrum One',
+    description: 'Mainnet',
+    color: 'text-red-400',
+    bgColor: 'bg-red-500/20',
+    borderColor: 'border-red-500/30'
+  },
+  {
+    chain: arbitrumSepolia,
+    name: 'Arbitrum Sepolia',
+    description: 'Testnet',
+    color: 'text-blue-400',
+    bgColor: 'bg-blue-500/20',
+    borderColor: 'border-blue-500/30'
   }
 ]
 

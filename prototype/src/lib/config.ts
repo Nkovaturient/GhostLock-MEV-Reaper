@@ -22,7 +22,19 @@ export const NETWORKS = {
       MOCK_ETH: import.meta.env.VITE_MAINNET_MOCK_ETH_ADDRESS as string,
       MOCK_USDC: import.meta.env.VITE_MAINNET_MOCK_USDC_ADDRESS as string,
     }
-  }
+  },
+  ARBITRUM_ONE: {
+    chainId: 42161,
+    name: 'Arbitrum One',
+    rpcUrl: import.meta.env.VITE_ARBITRUM_ONE_RPC_URL || 'https://arb1.arbitrum.io/rpc' || 'wss://arbitrum-one-rpc.publicnode.com',
+    contracts: {
+      GHOSTLOCK_INTENTS: import.meta.env.VITE_ARBITRUM_GHOSTLOCK_INTENTS_ADDRESS || '0x...', // Update with your contract address
+      BATCH_SETTLEMENT: import.meta.env.VITE_ARBITRUM_BATCH_SETTLEMENT_ADDRESS || '0x...',
+      EPOCH_RNG: import.meta.env.VITE_ARBITRUM_EPOCH_RNG_ADDRESS || '0x...',
+      MOCK_ETH: import.meta.env.VITE_ARBITRUM_MOCK_ETH_ADDRESS || '0x...',
+      MOCK_USDC: import.meta.env.VITE_ARBITRUM_MOCK_USDC_ADDRESS || '0x...',
+    }
+  },
 } as const
 
 // Default to Base Sepolia for prototype
@@ -37,7 +49,7 @@ export const CONFIG = {
     DESCRIPTION: 'Encrypt.Randomize.Equalize - Comprehensive MEV protection demo',
     VERSION: '1.0.0-prototype',
   },
-  
+
   // Enhanced Trading Configuration
   TRADING: {
     DEFAULT_SLIPPAGE_BPS: 50,
@@ -46,7 +58,7 @@ export const CONFIG = {
     MIN_TARGET_OFFSET: 5,
     MAX_TARGET_OFFSET: 100,
   },
-  
+
   // Privacy Configuration
   PRIVACY: {
     DEFAULT_PADDING_SIZE: parseInt(import.meta.env.VITE_DEFAULT_PADDING_SIZE) || 256,
@@ -55,7 +67,7 @@ export const CONFIG = {
     ENABLE_PADDING: true,
     ENABLE_DUMMY_INTENTS: true,
   },
-  
+
   // Auction Configuration
   AUCTION: {
     EPOCH_DURATION_BLOCKS: 50,
@@ -114,6 +126,8 @@ export function getNetworkConfig(chainId: number) {
       return NETWORKS.BASE_SEPOLIA
     case 8453:
       return NETWORKS.BASE_MAINNET
+    case 42161:
+      return NETWORKS.ARBITRUM_ONE
     default:
       return NETWORKS.BASE_SEPOLIA
   }

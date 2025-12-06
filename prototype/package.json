@@ -11,6 +11,9 @@
     "agent": "cd ../agent-starter && npm run dev"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^7.3.4",
     "@rainbow-me/rainbowkit": "^2.2.8",
     "@react-three/drei": "^9.95.0",
     "@react-three/fiber": "^8.15.0",
