@@ -3,7 +3,6 @@ import { useNetworkConfig } from './useNetworkConfig'
 import { useEffect, useState } from 'react'
 import { useEthersProvider } from './useEthers'
 
-// Cache key for localStorage
 const getCacheKey = (chainId: number) => `blockNumber_${chainId}`
 
 /**
