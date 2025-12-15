@@ -10,6 +10,7 @@ const {
 } = require("./settlement.js");
 const IORedis = require("ioredis");
 const { dequeueRequestId } = require("../utils/queue.js");
+const { EPOCH_RNG_ABI } = require("../contracts/ABI.js");
 const redis = new IORedis(CONFIG.REDIS.URL);
 /**
  * Main solver service that orchestrates the settlement process
@@ -26,6 +27,8 @@ class SolverService {
       averageSettlementTime: 0,
       lastError: null
     };
+    this.requestedEpochs = new Set(); // Track epochs we've requested seeds for
+    this.epochRNGContract = null; // Will be initialized in verifyContracts
   }
 
   /**
@@ -71,6 +74,13 @@ class SolverService {
         throw error;
       }
     }
+
+    // Initialize EpochRNG contract instance
+    this.epochRNGContract = new ethers.Contract(
+      CONFIG.CONTRACTS.EPOCH_RNG,
+      EPOCH_RNG_ABI,
+      this.provider
+    );
   }
 
   /**
@@ -198,10 +208,16 @@ class SolverService {
         return;
       }
 
-      // Fetch unbiasable epoch seed for ordering and pricing
-      const epochSeed = await this.fetchEpochSeed(validation.epoch)
+      // Ensure epoch seed exists for fair ordering (RANDOMIZE layer)
+      // This prevents sandwich attacks by randomizing intent execution order
+      const epochSeed = await this.ensureEpochSeed(validation.epoch)
+      
+      if (!epochSeed || epochSeed === '0x0000000000000000000000000000000000000000000000000000000000000000') {
+        console.warn(`Batch ${key}: Epoch seed not available, skipping settlement`);
+        return;
+      }
 
-      // Deterministic seed-based ordering
+      // Deterministic seed-based ordering (RANDOMIZE layer)
       intents.sort((a, b) => this.compareBySeed(epochSeed, a, b))
 
       // Compute clearing price (pass symbol; internals can use seed if needed)
@@ -245,16 +261,137 @@ class SolverService {
     }
   }
 
-  // Query seed from EpochRNG contract (view)
+  /**
+   * Ensures epoch seed exists for fair ordering (RANDOMIZE layer)
+   * If seed doesn't exist, requests it and waits for VRF callback
+   * @param {number} epoch - The epoch number
+   * @returns {Promise<string>} The epoch seed (bytes32 hex string)
+   */
+  async ensureEpochSeed(epoch) {
+    try {
+      // First, check if seed already exists
+      let seed = await this.fetchEpochSeed(epoch);
+      const isEmpty = !seed || seed === '0x0000000000000000000000000000000000000000000000000000000000000000';
+      
+      if (!isEmpty) {
+        return seed;
+      }
+
+      // Seed doesn't exist - request it if we haven't already
+      if (!this.requestedEpochs.has(epoch)) {
+        console.log(`[EpochRNG] Requesting seed for epoch ${epoch} (RANDOMIZE layer)`);
+        await this.requestEpochSeed(epoch);
+        this.requestedEpochs.add(epoch);
+      }
+
+      // Wait for seed to be available (VRF callback)
+      console.log(`[EpochRNG] Waiting for epoch ${epoch} seed from VRF...`);
+      seed = await this.waitForEpochSeed(epoch);
+      
+      return seed;
+    } catch (error) {
+      console.error(`[EpochRNG] Error ensuring epoch seed for epoch ${epoch}:`, error);
+      return '0x0000000000000000000000000000000000000000000000000000000000000000';
+    }
+  }
+
+  /**
+   * Fetches epoch seed from EpochRNG contract (read-only)
+   * @param {number} epoch - The epoch number
+   * @returns {Promise<string>} The epoch seed or zero bytes if not available
+   */
   async fetchEpochSeed(epoch) {
     try {
-      const rng = new ethers.Contract(CONFIG.CONTRACTS.EPOCH_RNG, CONFIG.ABIS.EPOCH_RNG, this.provider)
-      const seed = await rng.epochSeed(epoch)
-      return seed
+      if (!this.epochRNGContract) {
+        this.epochRNGContract = new ethers.Contract(
+          CONFIG.CONTRACTS.EPOCH_RNG,
+          EPOCH_RNG_ABI,
+          this.provider
+        );
+      }
+      const seed = await this.epochRNGContract.epochSeed(epoch);
+      return seed;
     } catch (e) {
-      console.warn('Failed to fetch epoch seed, using zero seed')
-      return '0x0000000000000000000000000000000000000000000000000000000000000000'
+      console.warn(`[EpochRNG] Failed to fetch epoch seed for epoch ${epoch}:`, e.message);
+      return '0x0000000000000000000000000000000000000000000000000000000000000000';
     }
+  }
+
+  /**
+   * Requests epoch seed from EpochRNG contract (write transaction)
+   * This triggers VRF randomness request from Drand network
+   * @param {number} epoch - The epoch number
+   * @returns {Promise<string>} Transaction hash
+   */
+  async requestEpochSeed(epoch) {
+    if (!this.signer) {
+      throw new Error('Solver signer not available - cannot request epoch seed');
+    }
+
+    try {
+      const rngContract = new ethers.Contract(
+        CONFIG.CONTRACTS.EPOCH_RNG,
+        EPOCH_RNG_ABI,
+        this.signer
+      );
+
+      // Check if seed already exists before requesting
+      const existingSeed = await rngContract.epochSeed(epoch);
+      if (existingSeed !== '0x0000000000000000000000000000000000000000000000000000000000000000') {
+        console.log(`[EpochRNG] Seed for epoch ${epoch} already exists`);
+        return null;
+      }
+
+      // Request seed with sufficient callback gas limit
+      const callbackGasLimit = 500000; // Sufficient for VRF callback
+      const tx = await rngContract.requestEpochSeed(epoch, callbackGasLimit, {
+        value: ethers.parseEther('0.001'), // Funding for VRF callback
+        maxFeePerGas: ethers.parseUnits("0.2", "gwei"),
+        maxPriorityFeePerGas: ethers.parseUnits("0.2", "gwei"),
+      });
+
+      console.log(`[EpochRNG] Epoch seed request submitted for epoch ${epoch}: ${tx.hash}`);
+      await tx.wait();
+      console.log(`[EpochRNG] Epoch seed request confirmed for epoch ${epoch}`);
+
+      return tx.hash;
+    } catch (error) {
+      // Handle "Seed exists" error gracefully
+      if (error.message && error.message.includes('Seed exists')) {
+        console.log(`[EpochRNG] Seed for epoch ${epoch} already exists (requested by another solver)`);
+        return null;
+      }
+      console.error(`[EpochRNG] Failed to request epoch seed for epoch ${epoch}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Waits for epoch seed to become available after VRF request
+   * Polls the contract until seed is available or timeout
+   * @param {number} epoch - The epoch number
+   * @param {number} maxWaitTime - Maximum time to wait in milliseconds (default: 5 minutes)
+   * @param {number} pollInterval - Polling interval in milliseconds (default: 10 seconds)
+   * @returns {Promise<string>} The epoch seed when available
+   */
+  async waitForEpochSeed(epoch, maxWaitTime = 300000, pollInterval = 10000) {
+    const startTime = Date.now();
+    const zeroSeed = '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+    while (Date.now() - startTime < maxWaitTime) {
+      const seed = await this.fetchEpochSeed(epoch);
+      
+      if (seed && seed !== zeroSeed) {
+        console.log(`[EpochRNG] Epoch ${epoch} seed available: ${seed.slice(0, 10)}...`);
+        return seed;
+      }
+
+      // Wait before next poll
+      await this.sleep(pollInterval);
+    }
+
+    console.warn(`[EpochRNG] Timeout waiting for epoch ${epoch} seed after ${maxWaitTime}ms`);
+    return zeroSeed;
   }
 
   // Deterministic compare via keccak256(seed || requestId || user)

@@ -11,22 +11,24 @@ A stealth shield against MEV, encrypting trades and settling them fair.
 
 ## 🛡️ Overview
 
-GhostLock: MEV Reaper is a cutting-edge DeFi platform that protects traders from Maximal Extractable Value (MEV) attacks through advanced cryptographic techniques and fair ordering mechanisms. Built on Base Sepolia, it leverages blocklock encryption, VRF-based ordering, and AI-optimized batch auctions.
+GhostLock: MEV Reaper is a cutting-edge DeFi platform that significantly endeavours to protect traders from Maximal Extractable Value (MEV) attacks through a **3-layer defense strategy**: **ENCRYPT → RANDOMIZE → EQUALIZE**. Built on Base Sepolia and Arbitrum One, it leverages blocklock encryption, VRF-based ordering, and AI-optimized batch auctions to eliminate front-running, sandwich attacks, and price manipulations at each levels.
 
 ![GhostLock Banner](https://github.com/user-attachments/assets/8b445ad2-000e-404b-afeb-6e77991f677a)
 
 ## ✨ Key Features
 
-- **🔒 Blocklock Encryption**: Time-locked encryption hides trading intents until execution
-- **🎲 VRF Ordering**: Verifiable Random Function ensures fair transaction sequencing  
-- **⚡ Batch Auctions**: Uniform pricing eliminates front-running opportunities
-- **🤖 Trade Intents Settlement**:   
-  - Future: Solver competition board to ensure liveness + decentralization.  
-- **📊 Transparency Panel** *(new)*:  
-  - Gas fee estimate,  
-  - Unlock block + decryption ETA (calculated dynamically per network),  
-  - Expected receive amount via 1inch API.  
-- **💳 Mock ERC-20 Tokens**: ETH, USDC, WETH for dev/test.  
+### 3-Layer MEV Protection Strategy
+
+1. **🔒 ENCRYPT (Layer 1)**: Blocklock time-locked encryption hides trading intents until execution block
+2. **🎲 RANDOMIZE (Layer 2)**: EpochRNG VRF-based fair ordering prevents sandwich attacks via deterministic randomization
+3. **⚡ EQUALIZE (Layer 3)**: Batch auctions with uniform pricing eliminate front-running opportunities and price manipulations.
+
+### Additional Features
+
+- **🤖 Trade Intents Settlement**: Automated solver with AI-optimized clearing prices
+- **📊 Transparency Panel**: Gas estimates, unlock block ETA, expected receive amounts via 1inch API
+- **💳 Mock ERC-20 Tokens**: ETH, USDC, WETH for development and testing
+- **🌐 Multi-Chain**: Deployed on Base Sepolia (testnet) and Arbitrum One (mainnet-ready)  
 
 
 ## 🏗️ Architecture
@@ -42,13 +44,37 @@ GhostLock: MEV Reaper is a cutting-edge DeFi platform that protects traders from
 - **Runtime**: Node.js with Express framework
 - **Blockchain**: Ethers.js for smart contract interaction
 - **APIs**: RESTful API design with comprehensive endpoints
+- **Solver Service**: Automated batch settlement with epoch seed management (Layer 2)
+- **Scheduler**: Proactive epoch seed monitoring and VRF request handling
 - **Real-time**: WebSocket support for live updates
 
 ### Smart Contracts (Solidity)
 - **GhostLockIntents**: Manages encrypted trading intents
-- **BatchSettlement**: Handles uniform-price batch auctions
 - **EpochRNG**: Provides verifiable randomness for fair ordering
+- **BatchSettlement**: Handles uniform-price batch auctions
 - **MockTokens**: Test tokens for development and testing
+
+### Layer 2: EpochRNG Randomization
+
+**Purpose**: Prevents sandwich attacks by randomizing intent execution order using verifiable randomness.
+
+**How it works**:
+1. Backend solver automatically requests VRF seed from Drand network via EpochRNG contract for each epoch
+2. When intents are decrypted (after Layer 1), solver ensures epoch seed exists before processing
+3. Intents are grouped by epoch and ordered deterministically using `keccak256(epochSeed || requestId || user)`
+4. This creates fair, unbiased sequencing that attackers cannot predict or manipulate
+5. Same seed always produces same order → verifiable and deterministic
+
+**Implementation**:
+- **Backend**: `solver.js` automatically requests epoch seeds, waits for VRF callback, then orders intents
+- **Backend**: `scheduler.js` proactively monitors and pre-requests seeds for upcoming epochs
+- **Frontend**: `useEpochRNG` hook reads seeds for display, `useAutoEpochSeedRequest` monitors availability (read-only)
+- **Utilities**: `epoch-ordering.ts` provides deterministic comparison functions matching backend logic
+
+**Tackles**:
+- ✅ Sandwich attacks (can't predict order to insert front/back-run)
+- ✅ Front-running (order is randomized, not first-come-first-served)
+- ✅ MEV extraction via sequencing manipulation
 
 ## ⚔️ How GhostLock is Different
 
@@ -62,7 +88,7 @@ GhostLock: MEV Reaper is a cutting-edge DeFi platform that protects traders from
 - **CoW Protocol**  
   - Focus: batch auctions with solver competition.  
   - Limitation: intents visible before clearing → still exploitable; solvers can extract flow.  
-  - **GhostLock advantage**: adds **Blocklock encryption + VRF randomization**, so intents remain hidden until reveal, then shuffled to remove sequencing edge. GhostLock inherits batch auction fairness but *eliminates pre-reveal leakage*.
+  - **GhostLock advantage**: adds **3-layer protection (ENCRYPT + RANDOMIZE + EQUALIZE)**, so intents remain hidden until reveal, then shuffled via VRF to remove sequencing edge, then settled uniformly. GhostLock inherits batch auction fairness but *eliminates pre-reveal leakage and sequencing manipulation*.
 
 - **MEV-Boost / PBS**  
   - Focus: splitting block builders and proposers.  
@@ -137,13 +163,18 @@ npm run server
 
 ## 📋 Smart Contract Deployment
 
-### **Deployed Smart Contracts on BaseSepolia Network**:
+### **Base Sepolia (Testnet)**
 
 - [BaseSepolia Faucets](https://www.alchemy.com/faucets/base-sepolia)
-- [GHOSTLOCK_INTENTS_ADDRESS](https://sepolia.basescan.org/address/0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C)
-- [BATCH_SETTLEMENT_ADDRESS](https://sepolia.basescan.org/address/0x8aF0Ec5b9a22d02acdC0fb3ad75831fef3208706) 
-- [EPOCH_RNG_ADDRESS](https://sepolia.basescan.org/address/0xA785F4B588013C9761b6B2Dff025e058C42cb798) 
-- [MOCK_ETH_ADDRESS](https://sepolia.basescan.org/address/0xE8901D9f2f262f4F09E30344aA8470eCEbc64CBD) 
+- [GHOSTLOCK_INTENTS](https://sepolia.basescan.org/address/0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C) - `0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C`
+- [BATCH_SETTLEMENT](https://sepolia.basescan.org/address/0x8aF0Ec5b9a22d02acdC0fb3ad75831fef3208706) - `0x8aF0Ec5b9a22d02acdC0fb3ad75831fef3208706`
+- [EPOCH_RNG](https://sepolia.basescan.org/address/0xA785F4B588013C9761b6B2Dff025e058C42cb798) - `0xA785F4B588013C9761b6B2Dff025e058C42cb798`
+- [MOCK_ETH](https://sepolia.basescan.org/address/0xE8901D9f2f262f4F09E30344aA8470eCEbc64CBD) - `0xE8901D9f2f262f4F09E30344aA8470eCEbc64CBD`
+
+### **Arbitrum One (Mainnet)**
+
+- [GHOSTLOCK_INTENTS](https://arbiscan.io/address/0x2Ad463E1f6783e610504A1027D6AdE8b2DcF10b2) - `0x2Ad463E1f6783e610504A1027D6AdE8b2DcF10b2`
+- [EPOCH_RNG](https://arbiscan.io/address/0x96EE446A832b7AdcF598C4B2340131f622677c25) - `0x96EE446A832b7AdcF598C4B2340131f622677c25` 
 
 ## 📖 API Documentation
 
@@ -162,9 +193,10 @@ npm run server
 
 ## Future Roadmap
 
-- **On-chain verified randomness Intefrations** → Calling the Drand( VRF) verification baked directly into EpochRNG contracts, so ordering proofs are trustless.
+<!-- - **On-chain verified randomness Intefrations** → Calling the Drand( VRF) verification baked directly into EpochRNG contracts, so ordering proofs are trustless. -->
+- Batch auctions with uniform pricing - Solver Competiton board
 - **Liveness guarantees** → Bond + slashing for missed reveals, fallback threshold revealers, and permissionless settlement calls so no one can grief the auction.
-- **Privacy hardening** → Add ciphertext(intent) padding, dummy intents, and batch-only publication so metadata leakage doesn’t kill the whole “encrypted” vibe.
+<!-- - **Privacy hardening** → Add ciphertext(intent) padding, dummy intents, and batch-only publication so metadata leakage doesn’t kill the whole “encrypted” vibe. -->
 
 ## 🤝 Contributing
 

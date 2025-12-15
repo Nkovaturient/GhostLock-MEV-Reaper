@@ -1,5 +1,6 @@
 const { CONFIG } = require("../config.js");
 const { solverService } = require("./solver.js");
+const { ethers } = require("ethers");
 
 /**
  * Scheduler service for managing periodic tasks
@@ -26,6 +27,7 @@ class SchedulerService {
     this.startSettlementCheck();
     this.startHealthCheck();
     this.startPriceUpdate();
+    this.startEpochSeedMonitoring();
   }
 
   /**
@@ -93,6 +95,59 @@ class SchedulerService {
 
     this.tasks.set('priceUpdate', intervalId);
     console.log(`✅ Price update task started (${CONFIG.SCHEDULER.PRICE_UPDATE_INTERVAL_MS}ms)`);
+  }
+
+  /**
+   * Start epoch seed monitoring task
+   * Proactively requests epoch seeds for upcoming epochs to ensure they're ready
+   * when intents are decrypted (Layer 2: RANDOMIZE)
+   */
+  startEpochSeedMonitoring() {
+    const intervalId = setInterval(async () => {
+      try {
+        await this.checkAndRequestEpochSeeds();
+      } catch (error) {
+        console.error('Epoch seed monitoring task failed:', error);
+      }
+    }, CONFIG.SCHEDULER.SETTLEMENT_CHECK_INTERVAL_MS * 2); // Check every 60s
+
+    this.tasks.set('epochSeedMonitoring', intervalId);
+    console.log(`✅ Epoch seed monitoring task started`);
+  }
+
+  /**
+   * Checks current and upcoming epochs and requests seeds if needed
+   */
+  async checkAndRequestEpochSeeds() {
+    try {
+      if (!solverService.signer) {
+        return; // Can't request seeds without signer
+      }
+
+      const provider = solverService.provider;
+      const currentBlock = await provider.getBlockNumber();
+      const currentEpoch = Math.floor(currentBlock / CONFIG.AUCTION.EPOCH_DURATION_BLOCKS);
+      
+      // Check current epoch and next 2 epochs
+      const epochsToCheck = [currentEpoch, currentEpoch + 1, currentEpoch + 2];
+      
+      for (const epoch of epochsToCheck) {
+        try {
+          const seed = await solverService.fetchEpochSeed(epoch);
+          const isEmpty = !seed || seed === '0x0000000000000000000000000000000000000000000000000000000000000000';
+          
+          if (isEmpty && !solverService.requestedEpochs.has(epoch)) {
+            console.log(`[EpochSeedMonitor] Proactively requesting seed for epoch ${epoch}`);
+            await solverService.requestEpochSeed(epoch);
+            solverService.requestedEpochs.add(epoch);
+          }
+        } catch (error) {
+          console.warn(`[EpochSeedMonitor] Error checking epoch ${epoch}:`, error.message);
+        }
+      }
+    } catch (error) {
+      console.error('[EpochSeedMonitor] Error in epoch seed monitoring:', error);
+    }
   }
 
   /**

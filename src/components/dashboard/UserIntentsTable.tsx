@@ -7,10 +7,31 @@ import { useUserIntents } from '../../hooks/useUserIntents'
 import { formatIntentId } from '../../lib/blocklock-service'
 import { formatNumber } from '../../lib/utils'
 import { CONFIG } from '../../lib/config'
+import { useNetworkConfig } from '../../hooks/useNetworkConfig'
+import { useAccount } from 'wagmi'
 import Button from '../ui/Button'
 
 export default function UserIntentsTable() {
   const { data: intents, isLoading, error } = useUserIntents()
+  const { chainId } = useAccount()
+  const { CONTRACT_ADDRESS } = useNetworkConfig()
+  
+  // Get explorer URL based on chain
+  const getExplorerUrl = (txHash: string) => {
+    if (!chainId) return `https://sepolia.basescan.org/tx/${txHash}`
+    const chainIdNum = Number(chainId)
+    if (chainIdNum === 84532) return `https://sepolia.basescan.org/tx/${txHash}`
+    if (chainIdNum === 42161) return `https://arbiscan.io/tx/${txHash}`
+    return `https://sepolia.basescan.org/tx/${txHash}` // Default to Base Sepolia
+  }
+  
+  const getContractExplorerUrl = () => {
+    if (!chainId || !CONTRACT_ADDRESS) return `https://sepolia.basescan.org/address/${CONFIG.CONTRACTS.GHOSTLOCK_INTENTS}#readContract`
+    const chainIdNum = Number(chainId)
+    if (chainIdNum === 84532) return `https://sepolia.basescan.org/address/${CONTRACT_ADDRESS}#readContract`
+    if (chainIdNum === 42161) return `https://arbiscan.io/address/${CONTRACT_ADDRESS}#readContract`
+    return `https://sepolia.basescan.org/address/${CONFIG.CONTRACTS.GHOSTLOCK_INTENTS}#readContract`
+  }
 
   if (isLoading) {
     return (
@@ -143,19 +164,19 @@ export default function UserIntentsTable() {
                       <span className="font-mono text-primary-400">
                         {intent.transactionHash ? (
                           <a
-                            href={`https://sepolia.basescan.org/tx/${intent.transactionHash}`}
+                            href={getExplorerUrl(intent.transactionHash)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="underline hover:text-primary-300"
                           >
-                            {formatIntentId(intent.id)}
+                            {intent.transactionHash.slice(0, 10)}...
                           </a>
                         ) : (
-                          '—'
+                          <span className="text-ghost-500">#{intent.id}</span>
                         )}
                       </span>
                       <span className="text-xs text-ghost-500">
-                        {intent.transactionHash ? 'View on BaseScan' : 'Pending Transaction'}
+                        {intent.transactionHash ? 'View on Explorer' : `Intent ID: ${intent.id}`}
                       </span>
                     </div>
                   </td>
@@ -166,7 +187,7 @@ export default function UserIntentsTable() {
                         size="sm"
                         variant="ghost"
                         className="text-xs"
-                        onClick={() => window.open(`https://sepolia.basescan.org/address/${CONFIG.CONTRACTS.GHOSTLOCK_INTENTS}#readContract`, '_blank')}
+                        onClick={() => window.open(getContractExplorerUrl(), '_blank')}
                       >
                         <ExternalLink className="w-3 h-3" />
                         Contract

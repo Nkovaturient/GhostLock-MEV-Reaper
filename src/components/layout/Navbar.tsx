@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { Menu, X, Shield, Activity, BarChart3, Zap, BanknoteIcon} from 'lucide-react'
 import { cn } from '../../lib/utils'
+import NetworkSwitcher from '../ui/NetworkSwitcher'
 
 const navigation = [
   { name: 'Trade', href: '/trade', icon: Zap },
@@ -59,8 +60,11 @@ export default function Navbar() {
             })}
           </div>
 
-          {/* Connect Button */}
+          {/* Connect Button & Network Switcher */}
           <div className="flex items-center space-x-4">
+            <div className="hidden md:block">
+              <NetworkSwitcher />
+            </div>
             <ConnectButton />
             
             {/* Mobile menu button */}
@@ -80,6 +84,9 @@ export default function Navbar() {
           className="md:hidden overflow-hidden"
         >
           <div className="py-4 space-y-2">
+            <div className="px-3 pb-2">
+              <NetworkSwitcher />
+            </div>
             {navigation.map((item) => {
               const Icon = item.icon
               const isActive = location.pathname === item.href

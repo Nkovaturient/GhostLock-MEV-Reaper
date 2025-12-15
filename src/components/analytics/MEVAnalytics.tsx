@@ -5,7 +5,7 @@ import { Badge } from '../ui/Badge'
 import { formatCurrency } from '../../lib/utils'
 import { useMEVGlobal, refreshMEVData } from '../../hooks/useMEVData'
 import React, { useState, useCallback } from 'react'
-import { useBlockNumber } from 'wagmi'
+import { useSharedBlockNumber } from '../../hooks/useSharedBlockNumber'
 
 export default function MEVAnalytics() {
   const [searchParams, setSearchParams] = useState({
@@ -18,7 +18,7 @@ export default function MEVAnalytics() {
   const [isCustomSearch, setIsCustomSearch] = useState(false)
 
   // Get current block number
-  const { data: currentBlock } = useBlockNumber({ watch: true })
+  const { blockNumber: currentBlock } = useSharedBlockNumber()
 
   // Use dynamic parameters for MEV data
   const { data: mevData, isLoading, error } = useMEVGlobal(searchParams)

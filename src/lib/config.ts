@@ -8,6 +8,13 @@ export const CONFIG = {
     MOCK_ETH: import.meta.env.VITE_MOCK_ETH_ADDRESS as string,
     MOCK_USDC: import.meta.env.VITE_MOCK_USDC_ADDRESS as string,
   },
+  ARBITRUM: {
+    chainId: 42161,
+    name: 'Arbitrum One',
+    rpcUrl: import.meta.env.VITE_ARBITRUM_ONE_RPC_URL || 'https://arb1.arbitrum.io/rpc',
+    GHOSTLOCK_INTENTS: import.meta.env.VITE_ARBITRUM_GHOSTLOCK_INTENTS_ADDRESS as string,
+    EPOCH_RNG: import.meta.env.VITE_ARBITRUM_EPOCH_RNG_ADDRESS as string,
+  },
   API: {
     SOLVER_URL: import.meta.env.VITE_SOLVER_API_URL as string,
     INDEXER_URL: import.meta.env.VITE_INDEXER_URL as string,

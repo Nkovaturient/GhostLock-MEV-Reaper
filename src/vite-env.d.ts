@@ -12,6 +12,8 @@ interface ImportMetaEnv {
   readonly VITE_MOCK_TOKEN_B_ADDRESS?: string
   readonly VITE_SOLVER_API_URL?: string
   readonly VITE_INDEXER_URL?: string
+  readonly VITE_ARBITRUM_GHOSTLOCK_INTENTS_ADDRESS?: string
+  readonly VITE_ARBITRUM_EPOCH_RNG_ADDRESS?: string
 }
 
 interface ImportMeta {

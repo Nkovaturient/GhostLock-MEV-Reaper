@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { useAccount, useBlockNumber } from 'wagmi'
+import { useAccount } from 'wagmi'
 import { Shield, Clock, TrendingUp, AlertCircle, ArrowUpDown, Zap } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card'
 import Button from '../ui/Button'
@@ -11,12 +11,15 @@ import { useIntentSubmission } from '../../hooks/useIntentSubmission'
 import { useEpochInfo } from '../../hooks/useAuctionData'
 import { MARKETS } from '../../lib/config'
 import { formatNumber } from '../../lib/utils'
+import { useNetworkConfig } from '../../hooks/useNetworkConfig'
+import { useSharedBlockNumber } from '../../hooks/useSharedBlockNumber'
 import { ethers } from 'ethers'
 
 const marketOptions = MARKETS.map(market => ({
   value: market.id.toString(),
   label: market.name
 }))
+
 
 export default function IntentSubmissionForm({
   setBlocksAhead,
@@ -29,10 +32,23 @@ export default function IntentSubmissionForm({
   estimatedDecryptionTime: string,
   avgBlockTimeSeconds?: number
 }) {
-  const { isConnected } = useAccount()
-  const { data: blockNumber } = useBlockNumber({ watch: true })
+  const { isConnected, chainId } = useAccount()
+  const { secondsPerBlock, isSupported } = useNetworkConfig()
+  
+  // Use shared block number to avoid duplicate RPC calls
+  const { blockNumber, isLoading: isLoadingBlockNumber } = useSharedBlockNumber()
+  
   const { data: epochInfo } = useEpochInfo()
   const { submitIntent, isSubmitting, lastRequestId, lastTxHash, isConfirming, receipt } = useIntentSubmission()
+  
+  // Get explorer URL based on chain
+  const getExplorerUrl = (txHash: string) => {
+    if (!chainId) return `https://sepolia.basescan.org/tx/${txHash}`
+    const chainIdNum = Number(chainId)
+    if (chainIdNum === 84532) return `https://sepolia.basescan.org/tx/${txHash}`
+    if (chainIdNum === 42161) return `https://arbiscan.io/tx/${txHash}`
+    return `https://sepolia.basescan.org/tx/${txHash}` // Default to Base Sepolia
+  }
 
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
   const [marketId, setMarketId] = useState('0')
@@ -40,22 +56,47 @@ export default function IntentSubmissionForm({
   const [limitPrice, setLimitPrice] = useState('')
   const [slippageBps, setSlippageBps] = useState('50')
 
-  const currentBlock = blockNumber ? Number(blockNumber) : 0
-  const targetBlock = currentBlock + Number(blocksAhead)
+  // Use network-specific block time, fallback to provided avgBlockTimeSeconds
+  const blockTimeSeconds = avgBlockTimeSeconds || secondsPerBlock || 1
+  
+  // Calculate current block - use blockNumber if available, otherwise 0
+  // blockNumber can be undefined while loading, so we handle that explicitly
+  const currentBlock = blockNumber !== undefined ? blockNumber : 0
+  
+  // Calculate target block: currentBlock + user input (blocksAhead)
+  // blocksAhead is the number of blocks ahead the user wants
+  const blocksAheadNum = Number(blocksAhead) || 0
+  const targetBlock = currentBlock > 0 && blocksAheadNum > 0 ? currentBlock + blocksAheadNum : 0
+  
   const selectedMarket = MARKETS.find(m => m.id === Number(marketId))
 
   const [unit, setUnit] = useState<'blocks' | 'seconds'>('blocks')
   const [secondsAhead, setSecondsAhead] = useState('')
 
+  // Convert seconds to blocks when user inputs seconds
   useEffect(() => {
     if (unit === 'seconds') {
-      const spb = avgBlockTimeSeconds || 1
       const secs = Number(secondsAhead)
-      if (!Number.isFinite(secs) || secs <= 0) return
-      const blocks = Math.max(1, Math.ceil(secs / spb))
+      if (!Number.isFinite(secs) || secs <= 0) {
+        setBlocksAhead('')
+        return
+      }
+      // Convert seconds to blocks using network-specific block time
+      const blocks = Math.max(1, Math.ceil(secs / blockTimeSeconds))
       setBlocksAhead(String(blocks))
     }
-  }, [unit, secondsAhead, avgBlockTimeSeconds, setBlocksAhead])
+  }, [unit, secondsAhead, blockTimeSeconds, setBlocksAhead])
+  
+  // Convert blocks to seconds when user switches to seconds view
+  useEffect(() => {
+    if (unit === 'seconds' && blocksAhead) {
+      const blocks = Number(blocksAhead)
+      if (Number.isFinite(blocks) && blocks > 0) {
+        const secs = Math.round(blocks * blockTimeSeconds)
+        setSecondsAhead(String(secs))
+      }
+    }
+  }, [unit, blocksAhead, blockTimeSeconds])
 
   // Auto-update limit price based on market
   useEffect(() => {
@@ -80,6 +121,20 @@ export default function IntentSubmissionForm({
       return
     }
 
+    // Validate that we have a valid target block
+    if (!currentBlock || currentBlock === 0) {
+      console.error('Current block not available. Please wait for block number to load.')
+      return
+    }
+    
+    if (!blocksAheadNum || blocksAheadNum <= 0) {
+      console.error('Please enter a valid number of blocks or seconds ahead.')
+      return
+    }
+    
+    // Calculate final target block: currentBlock + blocksAhead
+    const finalTargetBlock = currentBlock + blocksAheadNum
+    
     try {
       await submitIntent({
         market: selectedMarket.name,
@@ -88,7 +143,7 @@ export default function IntentSubmissionForm({
         limitPrice,
         slippageBps: Number(slippageBps),
         marketId: Number(marketId),
-        targetBlock
+        targetBlock: finalTargetBlock
       })
 
       setAmount('')
@@ -178,33 +233,68 @@ export default function IntentSubmissionForm({
               />
 
               <div className="space-y-2">
+                <label className="block text-sm font-medium text-ghost-300">
+                  Decryption Timing
+                </label>
                 <div className="flex space-x-2">
                   <Button type="button" variant={unit === 'blocks' ? 'primary' : 'ghost'} onClick={() => setUnit('blocks')} className="flex-1">Blocks</Button>
                   <Button type="button" variant={unit === 'seconds' ? 'primary' : 'ghost'} onClick={() => setUnit('seconds')} className="flex-1">Seconds</Button>
                 </div>
                 {unit === 'blocks' ? (
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    placeholder="Enter number of blocks ahead"
-                    value={blocksAhead}
-                    onChange={(e) => setBlocksAhead(e.target.value)}
-                    className="font-funnel-display w-full px-4 py-2 border border-gray-300 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+                  <div className="space-y-1">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      placeholder="Enter number of blocks ahead"
+                      value={blocksAhead}
+                      onChange={(e) => setBlocksAhead(e.target.value)}
+                      className="font-funnel-display w-full px-4 py-2 border border-gray-300 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    {isLoadingBlockNumber ? (
+                      <p className="text-xs text-yellow-400">Loading block number...</p>
+                    ) : currentBlock > 0 ? (
+                      <p className="text-xs text-ghost-500">
+                        Current: {formatNumber(currentBlock)} → Target: {targetBlock > 0 ? formatNumber(targetBlock) : '—'} ({blocksAheadNum > 0 ? `+${blocksAheadNum}` : '0'} blocks ahead)
+                      </p>
+                    ) : (
+                      <p className="text-xs text-yellow-400">Connect wallet and wait for block number to load</p>
+                    )}
+                    <p className="text-xs text-ghost-400 italic">
+                      💡 Enter how many blocks ahead you want decryption to occur (e.g., 150 = current block + 150)
+                    </p>
+                  </div>
                 ) : (
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    placeholder="Enter seconds until decryption"
-                    value={secondsAhead}
-                    onChange={(e) => setSecondsAhead(e.target.value)}
-                    className="font-funnel-display w-full px-4 py-2 border border-gray-300 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                )}
-                {unit === 'seconds' && avgBlockTimeSeconds && (
-                  <p className="text-xs text-ghost-500">≈ {blocksAhead} blocks @ ~{avgBlockTimeSeconds}s/block</p>
+                  <div className="space-y-1">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      placeholder="Enter seconds until decryption"
+                      value={secondsAhead}
+                      onChange={(e) => setSecondsAhead(e.target.value)}
+                      className="font-funnel-display w-full px-4 py-2 border border-gray-300 text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    {blockTimeSeconds && (
+                      <p className="text-xs text-ghost-500">
+                        ≈ {blocksAhead || '0'} blocks @ ~{blockTimeSeconds.toFixed(2)}s/block
+                      </p>
+                    )}
+                    {isLoadingBlockNumber ? (
+                      <p className="text-xs text-yellow-400">Loading block number...</p>
+                    ) : currentBlock > 0 && blocksAheadNum > 0 ? (
+                      <p className="text-xs text-ghost-500">
+                        Current: {formatNumber(currentBlock)} → Target: {formatNumber(targetBlock)}
+                      </p>
+                    ) : currentBlock > 0 ? (
+                      <p className="text-xs text-ghost-500">Enter seconds until decryption</p>
+                    ) : (
+                      <p className="text-xs text-yellow-400">Connect wallet and wait for block number to load</p>
+                    )}
+                    <p className="text-xs text-ghost-400 italic">
+                      💡 Enter seconds until decryption (automatically converts to blocks based on network speed)
+                    </p>
+                  </div>
                 )}
               </div>
               {estimatedDecryptionTime && (
@@ -238,7 +328,11 @@ export default function IntentSubmissionForm({
                     </div>
                     <div className="flex justify-between">
                       <span className="text-ghost-400">Target Block:</span>
-                      <span>{formatNumber(targetBlock)}</span>
+                      <span>
+                        {targetBlock > 0 ? formatNumber(targetBlock) : (
+                          <span className="text-ghost-500">Enter blocks/seconds ahead</span>
+                        )}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-ghost-400">Est. Execution:</span>
@@ -253,11 +347,15 @@ export default function IntentSubmissionForm({
                 type="submit"
                 size="lg"
                 loading={isSubmitting}
-                disabled={!isConnected || !amount || !limitPrice}
+                disabled={!isConnected || !amount || !limitPrice || currentBlock === 0 || !blocksAheadNum || blocksAheadNum <= 0}
                 className="w-full"
               >
                 {!isConnected
                   ? 'Connect Wallet to Continue'
+                  : currentBlock === 0
+                  ? 'Loading Block Number...'
+                  : !blocksAheadNum || blocksAheadNum <= 0
+                  ? 'Enter Blocks/Seconds Ahead'
                   : `Submit ${side.charAt(0).toUpperCase() + side.slice(1)} Intent`
                 }
               </Button>
@@ -305,12 +403,11 @@ export default function IntentSubmissionForm({
                       size="sm"
                       variant="ghost"
                       onClick={() => {
-                        const baseScanUrl = `https://sepolia.basescan.org/tx/${lastTxHash}`;
-                        window.open(baseScanUrl, '_blank');
+                        window.open(getExplorerUrl(lastTxHash), '_blank');
                       }}
                       className="text-xs"
                     >
-                      View on BaseScan
+                      View on Explorer
                     </Button>
                   </div>
                 </div>
@@ -374,15 +471,43 @@ export default function IntentSubmissionForm({
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-ghost-400">Current Block:</span>
-                <span className="font-mono">{formatNumber(currentBlock)}</span>
+                <span className="font-mono">
+                  {isLoadingBlockNumber ? (
+                    <span className="text-yellow-400">Loading...</span>
+                  ) : currentBlock > 0 ? (
+                    formatNumber(currentBlock)
+                  ) : (
+                    <span className="text-ghost-500">Not available</span>
+                  )}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-ghost-400">Target Block:</span>
-                <span className="font-mono">{formatNumber(currentBlock + Number(blocksAhead))}</span>
+                <span className="font-mono">
+                  {isLoadingBlockNumber ? (
+                    <span className="text-yellow-400">Loading...</span>
+                  ) : targetBlock > 0 ? (
+                    formatNumber(targetBlock)
+                  ) : blocksAheadNum > 0 ? (
+                    <span className="text-ghost-500">Waiting for block number...</span>
+                  ) : (
+                    <span className="text-ghost-500">—</span>
+                  )}
+                </span>
               </div>
+              {blocksAheadNum > 0 && currentBlock > 0 && (
+                <div className="flex justify-between text-xs text-ghost-500">
+                  <span>Blocks Ahead:</span>
+                  <span>+{blocksAheadNum} blocks</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-ghost-400">Est. Time:</span>
-                <span>{estimatedDecryptionTime}</span>
+                <span>
+                  {estimatedDecryptionTime || (
+                    <span className="text-ghost-500">—</span>
+                  )}
+                </span>
               </div>
             </div>
           </CardContent>

@@ -11,6 +11,7 @@ import AuctionPage from './pages/AuctionPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import '@rainbow-me/rainbowkit/styles.css'
 import RevenuePage from './pages/RevenuePage'
+import { useAutoEpochSeedRequest } from './hooks/useAutoEpochSeedRequest'
 import React from 'react'
 
 const queryClient = new QueryClient({
@@ -22,26 +23,34 @@ const queryClient = new QueryClient({
   },
 })
 
+function AppContent() {
+  useAutoEpochSeedRequest()
+  
+  return (
+    <Router>
+      <div className="min-h-screen bg-gradient-to-br from-ghost-900 via-ghost-800 to-ghost-900">
+        <Navbar />
+        <main className="relative">
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/trade" element={<TradePage />} />
+            <Route path="/auctions" element={<AuctionPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/pricing" element={<RevenuePage />} />
+          </Routes>
+        </main>
+        <Toaster />
+      </div>
+    </Router>
+  )
+}
+
 function App() {
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider>
-          <Router>
-            <div className="min-h-screen bg-gradient-to-br from-ghost-900 via-ghost-800 to-ghost-900">
-              <Navbar />
-              <main className="relative">
-                <Routes>
-                  <Route path="/" element={<HomePage />} />
-                  <Route path="/trade" element={<TradePage />} />
-                  <Route path="/auctions" element={<AuctionPage />} />
-                  <Route path="/analytics" element={<AnalyticsPage />} />
-                  <Route path="/pricing" element={<RevenuePage />} />
-                </Routes>
-              </main>
-              <Toaster />
-            </div>
-          </Router>
+          <AppContent />
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

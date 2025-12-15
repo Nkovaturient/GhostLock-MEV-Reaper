@@ -7,6 +7,7 @@ import { Card, CardContent } from '../components/ui/Card'
 import React, { useEffect, useState } from 'react'
 import { useNetworkConfig } from '../hooks/useNetworkConfig'
 import { useEthersProvider } from '../hooks/useEthers'
+import { useSharedBlockNumber } from '../hooks/useSharedBlockNumber'
 
 export default function TradePage() {
   const { isConnected } = useAccount()
@@ -19,6 +20,7 @@ export default function TradePage() {
   const [avgBlockTimeSeconds, setAvgBlockTimeSeconds] = useState<number | null>(null)
 
   // Compute moving average block time from recent N blocks; fallback to config
+  // Update less frequently to reduce RPC calls (every 30s is sufficient for block time calculation)
   useEffect(() => {
     let cancelled = false
     const N = 20
@@ -36,21 +38,26 @@ export default function TradePage() {
         if (!cancelled) setAvgBlockTimeSeconds(avg)
       } catch {}
     }
-    compute()
-    const id = setInterval(compute, 15000)
+    compute() // Compute once on mount
+    const id = setInterval(compute, 30000) // Update every 30 seconds (block time doesn't change frequently)
     return () => { cancelled = true; clearInterval(id) }
   }, [provider, secondsPerBlock])
 
+  // Update estimated decryption time - use shared block number to avoid duplicate RPC calls
+  // Update less frequently (every 15s) since this is just UI display
+  const { blockNumber: sharedBlockNumber } = useSharedBlockNumber()
+  
   useEffect(() => {
     const updateEstimate = async () => {
       try {
         const spb = avgBlockTimeSeconds || secondsPerBlock
-        if (!provider || !spb || !blocksAhead) {
+        if (!provider || !spb || !blocksAhead || !sharedBlockNumber) {
           setEstimatedDecryptionTime("");
           return;
         }
-        const currentBlock = await provider.getBlockNumber();
-        const currentBlockData = await provider.getBlock(currentBlock);
+        
+        // Use shared block number instead of fetching again
+        const currentBlockData = await provider.getBlock(sharedBlockNumber);
         const currentTimestamp =
           currentBlockData?.timestamp || Math.floor(Date.now() / 1000);
 
@@ -82,7 +89,10 @@ export default function TradePage() {
     };
 
     updateEstimate();
-  }, [provider, avgBlockTimeSeconds, secondsPerBlock, blocksAhead]);
+    // Update every 15 seconds (less frequent since it's just UI display)
+    const interval = setInterval(updateEstimate, 15000);
+    return () => clearInterval(interval);
+  }, [provider, avgBlockTimeSeconds, secondsPerBlock, blocksAhead, sharedBlockNumber]);
 
   return (
     <div className="min-h-screen py-8">
