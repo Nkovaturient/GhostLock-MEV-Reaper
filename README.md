@@ -221,7 +221,5 @@ npm run server
 - [Dcipher Network](https://docs.dcipher.network/quickstart/blocklock/) upholding the permissionless threshold signing network
 - [Blocklock Protocol](https://github.com/randa-mu/blocklock-solidity) for time-locked encryption
 - [Randomness Protocol](https://github.com/randa-mu/randomness-solidity) for VRF implementation
-- [Base](https://base.org) for the underlying blockchain infrastructure
+- [Base](https://base.org) + Arbitrum for the underlying blockchain infrastructure
 - [Drand](https://drand.love) for distributed randomness beacon
-
-Happy building! 😄😊
