@@ -1,4 +1,4 @@
-# GhostLock: MEV Reaper <img src="https://img.shields.io/badge/Randamu%20Inc-blue" alt="Randamu Inc" />
+# GhostLock: MEV Reaper <img src="https://img.shields.io/badge/Randamu%20Inc-blue" alt="Randamu Inc" /> <img src="https://img.shields.io/badge/Dcipher%20Network-orange" alt="Dcipher Network" /> <img src="https://img.shields.io/badge/Drand-indigo" alt="Drand" />
 
 A stealth shield against MEV, encrypting trades and settling them fair.
 
