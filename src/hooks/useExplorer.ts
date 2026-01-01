@@ -39,10 +39,11 @@ export const useExplorer = (setActiveTab?: (tab: string) => void) => {
   
   // Listen for IntentSubmitted events to track new intents
   useWatchContractEvent({
-    chainId: chainId ? Number(chainId) : undefined,
+    chainId: isSupported && chainId ? Number(chainId) : undefined,
     abi: GHOSTLOCK_INTENTS_ABI,
-    address: contractAddress as `0x${string}`,
+    address: isSupported && contractAddress ? (contractAddress as `0x${string}`) : undefined,
     eventName: 'IntentSubmitted',
+    enabled: isSupported && !!chainId && !!contractAddress,
     onLogs: (logs) => {
       // Update the highest request ID when new intents are submitted
       logs.forEach(log => {
@@ -59,10 +60,11 @@ export const useExplorer = (setActiveTab?: (tab: string) => void) => {
 
   // Listen for IntentReady events to know when decryption is complete
   useWatchContractEvent({
-    chainId: chainId ? Number(chainId) : undefined,
+    chainId: isSupported && chainId ? Number(chainId) : undefined,
     abi: GHOSTLOCK_INTENTS_ABI,
-    address: contractAddress as `0x${string}`,
+    address: isSupported && contractAddress ? (contractAddress as `0x${string}`) : undefined,
     eventName: 'IntentReady',
+    enabled: isSupported && !!chainId && !!contractAddress,
     onLogs: (logs) => {
       // Refresh the data when an intent is ready
       queryClient.invalidateQueries({ queryKey: ["userRequests"] });

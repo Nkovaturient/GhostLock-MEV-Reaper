@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { CONFIG } from '../lib/config'
 import { BlocklockService } from '../lib/blocklock-service'
-import { useNetworkConfig } from './useNetworkConfig'
+// import { useNetworkConfig } from './useNetworkConfig'
 import { useSharedBlockNumber } from './useSharedBlockNumber'
 
 export interface AuctionData {
@@ -26,7 +26,9 @@ export function useAuctionData() {
       const url = `${CONFIG.API.SOLVER_URL}/ai/health`;
       const response = await fetch(url, { cache: 'no-store' })
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      return (await response.json()) as AuctionData[]
+      const data = await response.json()
+      // Ensure we always return an array
+      return Array.isArray(data) ? data : []
     },
     refetchInterval: 30000, // Reduced from 15s to 30s - auctions don't need frequent updates
     staleTime: 20000, // Consider stale after 20s

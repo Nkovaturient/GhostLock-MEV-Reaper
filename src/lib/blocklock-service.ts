@@ -2,6 +2,23 @@ import { ethers } from 'ethers'
 import { CONFIG, MARKETS } from './config'
 import { Blocklock } from 'blocklock-js'
 
+// Map chain IDs to supported blocklock chain IDs
+// blocklock-js may not support all chains, so we map to supported ones
+const BLOCKLOCK_CHAIN_ID_MAP: Record<number, number> = {
+  84532: 84532, // Base Sepolia - supported
+  8453: 84532,  // Base Mainnet -> Base Sepolia (same blocklock contract)
+  42161: 84532, // Arbitrum One -> Base Sepolia (fallback to supported chain)
+  421614: 84532, // Arbitrum Sepolia -> Base Sepolia (fallback to supported chain)
+}
+
+/**
+ * Gets a supported blocklock chain ID for the given chain ID
+ * Falls back to Base Sepolia if the chain is not directly supported
+ */
+function getBlocklockChainId(chainId: number): number {
+  return BLOCKLOCK_CHAIN_ID_MAP[chainId] || 84532 // Default to Base Sepolia
+}
+
 export interface IntentPayload {
   market: string
   side: 'buy' | 'sell'
@@ -68,7 +85,9 @@ export class BlocklockService {
         throw new Error('Blocklock not available in blocklock-js module')
       }
 
-      const blocklock = Blocklock.createFromChainId(this.signer, this.chainId)
+      // Use a supported blocklock chain ID (blocklock-js may not support all chains)
+      const blocklockChainId = getBlocklockChainId(this.chainId)
+      const blocklock = Blocklock.createFromChainId(this.signer, blocklockChainId)
 
       // Encode the payload according to the contract's expected format
       const abiCoder = ethers.AbiCoder.defaultAbiCoder()
@@ -159,7 +178,9 @@ export class BlocklockService {
    */
   async tryDecryptIntent(ciphertext: string, decryptionKey: string): Promise<IntentPayload | null> {
     try {
-      const blocklock = Blocklock.createFromChainId(this.signer, this.chainId);
+      // Use a supported blocklock chain ID (blocklock-js may not support all chains)
+      const blocklockChainId = getBlocklockChainId(this.chainId)
+      const blocklock = Blocklock.createFromChainId(this.signer, blocklockChainId);
 
       if (!blocklock) {
         console.warn('Decrypt function not available in blocklock-js')

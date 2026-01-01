@@ -75,10 +75,11 @@ export function useEpochRNG() {
   }
 
   useWatchContractEvent({
-    chainId: chainId || undefined,
+    chainId: isSupported && chainId ? Number(chainId) : undefined,
     abi: EPOCH_RNG_ABI,
-    address: EPOCH_RNG_ADDRESS as `0x${string}` | undefined,
+    address: isSupported && EPOCH_RNG_ADDRESS ? (EPOCH_RNG_ADDRESS as `0x${string}`) : undefined,
     eventName: 'EpochSeed',
+    enabled: isSupported && !!chainId && !!EPOCH_RNG_ADDRESS,
     onLogs: (logs) => {
       logs.forEach(log => {
         const epoch = Number((log as any).args?.epoch ?? (log as any).args?.[0])
@@ -89,10 +90,11 @@ export function useEpochRNG() {
   })
 
   useWatchContractEvent({
-    chainId: chainId || undefined,
+    chainId: isSupported && chainId ? Number(chainId) : undefined,
     abi: EPOCH_RNG_ABI,
-    address: EPOCH_RNG_ADDRESS as `0x${string}` | undefined,
+    address: isSupported && EPOCH_RNG_ADDRESS ? (EPOCH_RNG_ADDRESS as `0x${string}`) : undefined,
     eventName: 'EpochRequested',
+    enabled: isSupported && !!chainId && !!EPOCH_RNG_ADDRESS,
     onLogs: (logs) => {
       logs.forEach(log => {
         const epoch = Number((log as any).args?.epoch ?? (log as any).args?.[0])

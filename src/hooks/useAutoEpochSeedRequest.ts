@@ -18,9 +18,9 @@ export function useAutoEpochSeedRequest() {
   const { EPOCH_RNG_ADDRESS, isSupported, chainId } = useNetworkConfig()
 
   const { data: currentEpochSeed } = useReadContract({
-    chainId: chainId ? Number(chainId) : undefined,
+    chainId: isSupported && chainId ? Number(chainId) : undefined,
     abi: EPOCH_RNG_ABI,
-    address: EPOCH_RNG_ADDRESS as `0x${string}` | undefined,
+    address: isSupported && EPOCH_RNG_ADDRESS ? (EPOCH_RNG_ADDRESS as `0x${string}`) : undefined,
     functionName: 'epochSeed',
     args: currentEpoch !== null ? [BigInt(currentEpoch)] : undefined,
     query: {

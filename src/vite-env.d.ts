@@ -14,6 +14,13 @@ interface ImportMetaEnv {
   readonly VITE_INDEXER_URL?: string
   readonly VITE_ARBITRUM_GHOSTLOCK_INTENTS_ADDRESS?: string
   readonly VITE_ARBITRUM_EPOCH_RNG_ADDRESS?: string
+  readonly VITE_ARBITRUM_ONE_RPC_URL?: string
+  readonly VITE_ARBITRUM_SEPOLIA_RPC_URL?: string
+  readonly VITE_BASE_MAINNET_RPC_URL?: string
+  readonly VITE_BASE_MAINNET_GHOSTLOCK_INTENTS_ADDRESS?: string
+  readonly VITE_BASE_MAINNET_EPOCH_RNG_ADDRESS?: string
+  readonly VITE_ARBITRUM_SEPOLIA_GHOSTLOCK_INTENTS_ADDRESS?: string
+  readonly VITE_ARBITRUM_SEPOLIA_EPOCH_RNG_ADDRESS?: string
 }
 
 interface ImportMeta {

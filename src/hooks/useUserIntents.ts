@@ -98,10 +98,11 @@ export function useUserIntents() {
   
   // Listen for IntentSubmitted events to track new intents
   useWatchContractEvent({
-    chainId: chainId ? Number(chainId) : undefined,
+    chainId: isSupported && chainId ? Number(chainId) : undefined,
     abi: GHOSTLOCK_INTENTS_ABI,
-    address: GHOSTLOCK_INTENTS_ADDRESS as `0x${string}` | undefined,
+    address: isSupported && GHOSTLOCK_INTENTS_ADDRESS ? (GHOSTLOCK_INTENTS_ADDRESS as `0x${string}`) : undefined,
     eventName: 'IntentSubmitted',
+    enabled: isSupported && !!chainId && !!GHOSTLOCK_INTENTS_ADDRESS,
     onLogs: (logs) => {
       // Update the highest request ID when new intents are submitted
       logs.forEach(log => {
@@ -121,10 +122,11 @@ export function useUserIntents() {
 
   // Listen for IntentReady events to know when decryption is complete
   useWatchContractEvent({
-    chainId: chainId ? Number(chainId) : undefined,
+    chainId: isSupported && chainId ? Number(chainId) : undefined,
     abi: GHOSTLOCK_INTENTS_ABI,
-    address: GHOSTLOCK_INTENTS_ADDRESS as `0x${string}` | undefined,
+    address: isSupported && GHOSTLOCK_INTENTS_ADDRESS ? (GHOSTLOCK_INTENTS_ADDRESS as `0x${string}`) : undefined,
     eventName: 'IntentReady',
+    enabled: isSupported && !!chainId && !!GHOSTLOCK_INTENTS_ADDRESS,
     onLogs: (logs) => {
       // Refresh the intents data when an intent is ready
       queryClient.invalidateQueries({ queryKey: ['intents-transformed'] })

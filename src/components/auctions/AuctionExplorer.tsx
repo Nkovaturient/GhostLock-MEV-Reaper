@@ -28,14 +28,17 @@ export default function AuctionExplorer() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [marketFilter, setMarketFilter] = useState('all')
   
-  const filteredAuctions = auctions && auctions.length > 0 && auctions?.filter(auction => {
+  // Ensure auctions is always an array
+  const auctionsArray = Array.isArray(auctions) ? auctions : []
+  
+  const filteredAuctions = auctionsArray.filter(auction => {
     const matchesSearch = auction.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       auction.market.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || auction.status.toLowerCase() === statusFilter
     const matchesMarket = marketFilter === 'all' || auction.market === marketFilter
 
     return matchesSearch && matchesStatus && matchesMarket
-  }) || []
+  })
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -47,9 +50,9 @@ export default function AuctionExplorer() {
   }
 
   // Calculate summary stats
-  const totalVolume = auctions?.reduce((sum, auction) => sum + auction.volume, 0) || 0
-  const avgIntents = auctions?.length ? Math.round(auctions.reduce((sum, a) => sum + a.intents, 0) / auctions.length) : 0
-  const settledCount = auctions?.filter(a => a.status === 'Settled').length || 0
+  const totalVolume = auctionsArray.reduce((sum, auction) => sum + auction.volume, 0)
+  const avgIntents = auctionsArray.length ? Math.round(auctionsArray.reduce((sum, a) => sum + a.intents, 0) / auctionsArray.length) : 0
+  const settledCount = auctionsArray.filter(a => a.status === 'Settled').length
 
   if (isLoading) {
     return (
@@ -85,7 +88,7 @@ export default function AuctionExplorer() {
           },
           {
             label: 'Total Auctions',
-            value: auctions?.length.toString() || '0',
+            value: auctionsArray.length.toString(),
             icon: Activity,
             change: `+${settledCount}`,
             color: 'text-blue-400'
