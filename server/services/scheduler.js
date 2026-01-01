@@ -27,7 +27,7 @@ class SchedulerService {
     this.startSettlementCheck();
     this.startHealthCheck();
     this.startPriceUpdate();
-    this.startEpochSeedMonitoring();
+    // Epoch seed monitoring removed - seeds are now requested on-demand when intents are detected
   }
 
   /**
@@ -102,18 +102,18 @@ class SchedulerService {
    * Proactively requests epoch seeds for upcoming epochs to ensure they're ready
    * when intents are decrypted (Layer 2: RANDOMIZE)
    */
-  startEpochSeedMonitoring() {
-    const intervalId = setInterval(async () => {
-      try {
-        await this.checkAndRequestEpochSeeds();
-      } catch (error) {
-        console.error('Epoch seed monitoring task failed:', error);
-      }
-    }, CONFIG.SCHEDULER.SETTLEMENT_CHECK_INTERVAL_MS * 2); // Check every 60s
+  // startEpochSeedMonitoring() {
+  //   const intervalId = setInterval(async () => {
+  //     try {
+  //       await this.checkAndRequestEpochSeeds();
+  //     } catch (error) {
+  //       console.error('Epoch seed monitoring task failed:', error);
+  //     }
+  //   }, CONFIG.SCHEDULER.SETTLEMENT_CHECK_INTERVAL_MS * 2); // Check every 60s
 
-    this.tasks.set('epochSeedMonitoring', intervalId);
-    console.log(`✅ Epoch seed monitoring task started`);
-  }
+  //   this.tasks.set('epochSeedMonitoring', intervalId);
+  //   console.log(`✅ Epoch seed monitoring task started`);
+  // }
 
   /**
    * Checks current and upcoming epochs and requests seeds if needed

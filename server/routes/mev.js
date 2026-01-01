@@ -14,8 +14,8 @@ const CACHE_DURATION = 60000 // 1 minute cache
 // Rate limiting helper
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 
-// Fetch MEV data from ZeroMEV API
-async function fetchMEVData(params = {}) {
+// Fetch MEV data from ZeroMEV API with retry and fallback
+async function fetchMEVData(params = {}, retries = 2) {
   const {
     address = '0x00356ce6250f8489d23ff32742256ab5be9dd8d7',
     count = 10,
@@ -23,27 +23,51 @@ async function fetchMEVData(params = {}) {
     page = 1
   } = params
 
-  try {
-    // Fetch recent MEV blocks with dynamic parameters
-    const mevBlocksResponse = await axios.get(`${ZEROMEV_API_BASE}/mevBlock?block_number=${block_number}&count=${count}`)
-    await delay(RATE_LIMIT_DELAY)
-    
-    // Fetch MEV transactions summary with dynamic address
-    const mevSummaryResponse = await axios.get(`${ZEROMEV_API_BASE}/mevTransactionsSummary?address_from=${address}`)
-    await delay(RATE_LIMIT_DELAY)
-    
-    // Fetch recent MEV transactions with dynamic address and page
-    const mevTransactionsResponse = await axios.get(`${ZEROMEV_API_BASE}/mevTransactions?address_from=${address}&page=${page}`)
-    
-    return {
-      blocks: mevBlocksResponse.data,
-      summary: mevSummaryResponse.data,
-      transactions: mevTransactionsResponse.data,
-      params: { address, count, block_number, page }
+  if (!ZEROMEV_API_BASE) {
+    throw new Error('ZEROMEV_API environment variable not configured')
+  }
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const mevBlocksResponse = await axios.get(
+        `${ZEROMEV_API_BASE}/mevBlock?block_number=${block_number}&count=${count}`,
+        { timeout: 10000 }
+      )
+      await delay(RATE_LIMIT_DELAY)
+      
+      const mevSummaryResponse = await axios.get(
+        `${ZEROMEV_API_BASE}/mevTransactionsSummary?address_from=${address}`,
+        { timeout: 10000 }
+      )
+      await delay(RATE_LIMIT_DELAY)
+      
+      const mevTransactionsResponse = await axios.get(
+        `${ZEROMEV_API_BASE}/mevTransactions?address_from=${address}&page=${page}`,
+        { timeout: 10000 }
+      )
+      
+      return {
+        blocks: mevBlocksResponse.data || [],
+        summary: mevSummaryResponse.data || {},
+        transactions: mevTransactionsResponse.data || [],
+        params: { address, count, block_number, page }
+      }
+    } catch (error) {
+      if (attempt === retries) {
+        console.error(`Error fetching MEV data after ${retries + 1} attempts:`, error.message)
+        if (error.response?.status === 500) {
+          return {
+            blocks: [],
+            summary: {},
+            transactions: [],
+            params: { address, count, block_number, page },
+            error: 'MEV API temporarily unavailable'
+          }
+        }
+        throw new Error(`Failed to fetch MEV data: ${error.message}`)
+      }
+      await delay(RATE_LIMIT_DELAY * (attempt + 1))
     }
-  } catch (error) {
-    console.error('Error fetching MEV data:', error.message)
-    throw new Error(`Failed to fetch MEV data: ${error.message}`)
   }
 }
 
@@ -189,6 +213,14 @@ router.get('/global', async (req, res) => {
     }
 
     const mevData = await fetchMEVData()
+    
+    if (mevData.error) {
+      return res.status(503).json({ 
+        error: mevData.error,
+        message: 'MEV API is temporarily unavailable. Please try again later.'
+      })
+    }
+    
     const mevStats = calculateMEVStats(mevData)
     
     mevDataCache = mevStats
@@ -197,7 +229,10 @@ router.get('/global', async (req, res) => {
     res.json(mevStats.global)
   } catch (error) {
     console.error('Error fetching global MEV stats:', error)
-    res.status(500).json({ error: error.message })
+    res.status(500).json({ 
+      error: error.message,
+      message: 'Failed to fetch MEV statistics. The external API may be unavailable.'
+    })
   }
 })
 

@@ -342,26 +342,41 @@ class SolverService {
         return null;
       }
 
+      const currentBlock = await this.provider.getBlockNumber();
+      const currentEpoch = Math.floor(currentBlock / CONFIG.AUCTION.EPOCH_DURATION_BLOCKS);
+      
+      if (epoch > currentEpoch + 1) {
+        console.warn(`[EpochRNG] Cannot request seed for future epoch ${epoch} (current: ${currentEpoch})`);
+        return null;
+      }
+
       // Request seed with sufficient callback gas limit
-      const callbackGasLimit = 500000; // Sufficient for VRF callback
+      const callbackGasLimit = 700000;
       const tx = await rngContract.requestEpochSeed(epoch, callbackGasLimit, {
-        value: ethers.parseEther('0.001'), // Funding for VRF callback
+        value: ethers.parseEther('0.001'),
         maxFeePerGas: ethers.parseUnits("0.2", "gwei"),
         maxPriorityFeePerGas: ethers.parseUnits("0.2", "gwei"),
       });
 
       console.log(`[EpochRNG] Epoch seed request submitted for epoch ${epoch}: ${tx.hash}`);
-      await tx.wait();
+      const receipt = await tx.wait();
+      
+      if (receipt.status === 0) {
+        throw new Error(`Transaction reverted for epoch ${epoch} - check contract conditions`);
+      }
+      
       console.log(`[EpochRNG] Epoch seed request confirmed for epoch ${epoch}`);
-
       return tx.hash;
     } catch (error) {
-      // Handle "Seed exists" error gracefully
       if (error.message && error.message.includes('Seed exists')) {
-        console.log(`[EpochRNG] Seed for epoch ${epoch} already exists (requested by another solver)`);
+        console.log(`[EpochRNG] Seed for epoch ${epoch} already exists`);
         return null;
       }
-      console.error(`[EpochRNG] Failed to request epoch seed for epoch ${epoch}:`, error);
+      if (error.receipt && error.receipt.status === 0) {
+        console.error(`[EpochRNG] Transaction reverted for epoch ${epoch} - may be too early, insufficient funds, or contract validation failed`);
+        throw error;
+      }
+      console.error(`[EpochRNG] Failed to request epoch seed for epoch ${epoch}:`, error.message || error);
       throw error;
     }
   }
