@@ -2,10 +2,12 @@
 
 A stealth shield against MEV, encrypting trades and settling them fair.
 
-### Glance
-- **Live:** [Preview](https://ghostlock.vercel.app/) 🟢
-- **Youtube:** [Demo](https://youtu.be/plceuO9AG8c) 🎥
-- **Blog:** [Hashnode](https://randomticks.hashnode.dev/ghostlock-mev-reaper) 📝
+## Glance
+
+| Live | YouTube | Blog |
+| --- | --- | --- |
+| [Preview](https://ghostlock.vercel.app/) 🟢 | [Demo](https://youtu.be/plceuO9AG8c) 🎥 | [Hashnode](https://randomticks.hashnode.dev/ghostlock-mev-reaper) 📝 |
+
 
 <img width="1500" height="600" alt="ChatGPT Image Aug 30, 2025, 09_57_54 PM" src="https://github.com/user-attachments/assets/71315e2c-3956-495f-8739-fa2d08d45ac0" />
 
@@ -14,6 +16,55 @@ A stealth shield against MEV, encrypting trades and settling them fair.
 GhostLock: MEV Reaper is a cutting-edge DeFi platform that significantly endeavours to protect traders from Maximal Extractable Value (MEV) attacks through a **3-layer defense strategy**: **ENCRYPT → RANDOMIZE → EQUALIZE**. Built on Base Sepolia and Arbitrum One, it leverages blocklock encryption, VRF-based ordering, and AI-optimized batch auctions to eliminate front-running, sandwich attacks, and price manipulations at each levels.
 
 ![GhostLock Banner](https://github.com/user-attachments/assets/8b445ad2-000e-404b-afeb-6e77991f677a)
+
+## What is MEV, anyway?
+
+- In theory, validators control MEV because they decide what goes into a block and in what order. In practice, they outsource the hard work to searchers. Searchers detect MEV opportunities, compete to execute them, and bribe validators via gas fees for inclusion priority. Validators still win because competition forces searchers to hand over most of the profit just to get included.
+
+- **MEV is not “lost” by validators. It is auctioned off.**
+
+```  
+┌──────────────┐      observe state       ┌──────────────┐      submit tx + gas bid     ┌──────────────┐     include + order tx     ┌────────────────┐
+│  Blockchain  │ ──────────────────────▶  │   Searchers  │ ───────────────────────────▶ │  Validators  │ ─────────────────────────▶ │ Block Execution│
+│              │   (state, mempool,       │              │   (priority fee / bribe)     │              │   (tx ordering & inclusion)│                │
+│              │    blocks)               │  bots + algos│                              │ block makers │                            │                │
+└──────────────┘                          └──────────────┘                              └──────────────┘                            └────────────────┘
+
+```
+
+## Between-Block MEV Problem
+
+| Normal On-chain World | MEV-Distorted World |
+| --- | --- |
+| Validators extend the chain honestly because future rewards exceed attacking past blocks. | Rewriting history becomes more profitable than extending it. |
+| 
+```
+Block N produced
+↓
+Block N+1 builds on it
+↓
+Finality increases
+↓
+Consensus stable
+```
+| 
+```
+Block N contains large MEV
+↓
+Validator evaluates:
+MEV(N) > Reward(N+1)
+↓
+Reorg becomes profitable
+↓
+Validator re-mines Block N
+↓
+Extracts MEV
+↓
+Original Block N discarded
+```
+|
+
+
 
 ## ✨ Key Features
 
