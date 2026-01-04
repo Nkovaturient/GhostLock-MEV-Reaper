@@ -227,7 +227,7 @@ npm run server
 - [GHOSTLOCK_INTENTS](https://arbiscan.io/address/0x2Ad463E1f6783e610504A1027D6AdE8b2DcF10b2) - `0x2Ad463E1f6783e610504A1027D6AdE8b2DcF10b2`
 - [EPOCH_RNG](https://arbiscan.io/address/0x96EE446A832b7AdcF598C4B2340131f622677c25) - `0x96EE446A832b7AdcF598C4B2340131f622677c25` 
 
-## 📖 API Documentation
+<!-- ## 📖 API Documentation
 
 ### Endpoints
 
@@ -239,7 +239,7 @@ npm run server
 #### Markets[ZEROMEV API]
 - `GET /api/markets` - List all markets
 - `GET /api/markets/:id` - Get specific market
-- `GET /api/markets/stats` - Get market statistics
+- `GET /api/markets/stats` - Get market statistics -->
   
 
 ## Future Roadmap
@@ -255,7 +255,7 @@ npm run server
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+5. Open a PR!
 
 
 <!--
