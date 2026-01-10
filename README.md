@@ -2,7 +2,7 @@
 
 A stealth shield against MEV, encrypting trades and settling them fair.
 
-## Glance
+## Glance [Sherlock Holmes of DeFi]
 
 | Live | YouTube | Blog |
 | --- | --- | --- |
