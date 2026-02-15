@@ -225,22 +225,7 @@ npm run server
 ### **Arbitrum One (Mainnet)**
 
 - [GHOSTLOCK_INTENTS](https://arbiscan.io/address/0x2Ad463E1f6783e610504A1027D6AdE8b2DcF10b2) - `0x2Ad463E1f6783e610504A1027D6AdE8b2DcF10b2`
-- [EPOCH_RNG](https://arbiscan.io/address/0x96EE446A832b7AdcF598C4B2340131f622677c25) - `0x96EE446A832b7AdcF598C4B2340131f622677c25` 
-
-<!-- ## 📖 API Documentation
-
-### Endpoints
-
-#### Auctions
-- `GET /api/auctions` - List all auctions
-- `GET /api/auctions/:id` - Get specific auction
-- `GET /api/auctions/stats` - Get auction statistics
-
-#### Markets[ZEROMEV API]
-- `GET /api/markets` - List all markets
-- `GET /api/markets/:id` - Get specific market
-- `GET /api/markets/stats` - Get market statistics -->
-  
+- [EPOCH_RNG](https://arbiscan.io/address/0x96EE446A832b7AdcF598C4B2340131f622677c25) - `0x96EE446A832b7AdcF598C4B2340131f622677c25`  
 
 ## Future Roadmap
 
@@ -274,3 +259,5 @@ npm run server
 - [Randomness Protocol](https://github.com/randa-mu/randomness-solidity) for VRF implementation
 - [Base](https://base.org) + Arbitrum for the underlying blockchain infrastructure
 - [Drand](https://drand.love) for distributed randomness beacon
+
+🧑‍🚀
