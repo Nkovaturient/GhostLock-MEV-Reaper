@@ -6,7 +6,7 @@ import { CONFIG, MARKETS } from '../lib/config'
 import { ethers } from 'ethers'
 import { markDecrypted, getRequestIds } from '../stores/requestIdStore'
 import { useState, useMemo, useEffect } from 'react'
-import { BlocklockService } from '../lib/blocklock-service'
+import { IntentService, type IntentPayload } from '../lib/intent-service'
 import { orderIntentsBySeed } from '../lib/epoch-ordering'
 import { useNetworkConfig } from './useNetworkConfig'
 
@@ -21,17 +21,6 @@ export interface UserIntent {
   decrypted?: IntentPayload | null
   isDecrypted: boolean
   transactionHash?: string // Add transaction hash for verification
-}
-
-export interface IntentPayload {
-  market: string
-  side: 'buy' | 'sell'
-  amount: string
-  limitPrice: string
-  slippageBps: number
-  marketId: number
-  epoch: number
-  user: string
 }
 
 interface ContractIntent {
@@ -242,7 +231,7 @@ export function useUserIntents() {
                 console.error(`Failed to decode decrypted payload for intent ${requestId}:`, e)
               }
             } else {
-              intentEpoch = BlocklockService.getTargetEpoch(contractIntent.unlockBlock)
+              intentEpoch = IntentService.getTargetEpoch(contractIntent.unlockBlock)
             }
 
             epochs.add(intentEpoch)
@@ -323,7 +312,7 @@ export function useUserIntents() {
       const epochIntentsMap = new Map<number, UserIntent[]>()
       
       for (const intent of intentsWithEpochs.intents) {
-        const epoch = intent.decrypted?.epoch ?? BlocklockService.getTargetEpoch(Number(intent.targetBlock))
+        const epoch = intent.decrypted?.epoch ?? IntentService.getTargetEpoch(Number(intent.targetBlock))
         if (!epochIntentsMap.has(epoch)) {
           epochIntentsMap.set(epoch, [])
         }

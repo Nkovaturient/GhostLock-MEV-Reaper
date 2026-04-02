@@ -1,224 +1,291 @@
-const { ethers } = require("ethers");
-const { CONFIG } = require("../config.js");
-
 /**
- * simulateSettlementTx uses callStatic.settleBatch to catch reverts. Run it before broadcasting.
- * isBatchReadyForSettlement now checks settledIntent(requestId) on-chain (assumes that mapping exists as public).
- *  If your contract uses a different name, substitute accordingly. Gas estimation with buffer avoids underestimates.
- * Simulate settlement via callStatic to detect reverts before sending.
- * Returns {ok: boolean, error?: string}
+ * settlement.js — GhostLock/HolmeSwap batch settlement
+ *
+ * SolverBoard flow (EQUALIZE layer):
+ *   1. registerBatchValue(batchId, value)   → SolverBoard
+ *   2. submitBid(batchId, surplus, routeHash) → SolverBoard
+ *   3. [wait BIDDING_WINDOW_BLOCKS + WINNER_SELECTION_BUFFER_BLOCKS]
+ *   4. selectWinner(batchId)                  → SolverBoard (owner-only)
+ *   5. executeSettlement(batchId, routes)    → SolverBoard → BatchSettlement.settleBatch
+ *
+ * For step 5, the server must provide plaintext payloads for each intent.
  */
-async function simulateSettlementTx(provider, requestIds, epoch, marketId, clearingPrice, fromAddress) {
-  try {
-    const settlementContract = new ethers.Contract(
-      CONFIG.CONTRACTS.BATCH_SETTLEMENT,
-      CONFIG.ABIS.BATCH_SETTLEMENT,
-      provider
-    );
 
-    // callStatic to simulate; in ethers v6 it's settlementContract.callStatic.settleBatch(...)
-    await settlementContract.callStatic.settleBatch(
-      requestIds,
-      epoch,
-      marketId,
-      clearingPrice,
-      { from: fromAddress }
-    );
+const { ethers } = require('ethers')
+const { CONFIG, ABIS } = require('../config.js')
 
-    return { ok: true };
-  } catch (err) {
-    // return revert reason where possible
-    const msg = err && err.error && err.error.message ? err.error.message : err.message || String(err);
-    console.warn("simulateSettlementTx failed:", msg);
-    return { ok: false, error: msg };
-  }
+const ZERO_SEED = '0x' + '00'.repeat(32)
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-/**
- * Submits a batch settlement transaction to the blockchain
- * @param {ethers.Signer} signer - The signer for the transaction
- * @param {number[]} requestIds - Array of intent request IDs to settle
- * @param {number} epoch - The epoch for this settlement
- * @param {number} marketId - The market ID being settled
- * @param {bigint} clearingPrice - The uniform clearing price
- * @returns {Promise<ethers.TransactionReceipt>} Transaction receipt
- */
-async function settleBatchTx(signer, requestIds, epoch, marketId, clearingPrice) {
-  let retries = CONFIG.SOLVER.MAX_RETRIES;
+// ─── IntentPayload builder ──────────────────────────────────────────────────
 
-  while (retries > 0) {
+/**
+ * Build IntentPayload[] from intents with stored plaintext.
+ * Each intent must have { requestId, user, side, amount, limitPrice, marketId, epoch }.
+ * The plaintext is ABI-encoded from the decoded fields.
+ */
+function buildIntentPayloads(intents) {
+  return intents.map(intent => {
+    const plaintext = ethers.AbiCoder.defaultAbiCoder().encode(
+      ['address', 'uint8', 'uint256', 'uint256', 'uint8', 'uint256', 'bool'],
+      [
+        intent.user,
+        intent.side,
+        intent.amount,
+        intent.limitPrice,
+        intent.marketId,
+        intent.epoch,
+        intent.isDummy ?? false,
+      ]
+    )
+    return {
+      requestId: BigInt(intent.requestId),
+      plaintext,
+    }
+  })
+}
+
+// ─── SolverBoard: registerBatchValue ───────────────────────────────────────
+
+async function registerBatchValueTx(signer, batchId, value) {
+  const board = new ethers.Contract(CONFIG.CONTRACTS.SOLVER_BOARD, ABIS.SOLVER_BOARD_ABI, signer)
+  let attemptsLeft = CONFIG.SOLVER.MAX_RETRIES
+  while (attemptsLeft > 0) {
     try {
-      const settlementContract = new ethers.Contract(
-        CONFIG.CONTRACTS.BATCH_SETTLEMENT,
-        CONFIG.ABIS.BATCH_SETTLEMENT,
-        signer
-      );
-
-      console.log(`Settling batch: ${requestIds.length} intents, epoch ${epoch}, market ${marketId}, price ${clearingPrice}`);
-
-      // dynamic gas estimation
-      let gasEstimate;
-      try {
-        gasEstimate = await settlementContract.estimateGas.settleBatch(requestIds, epoch, marketId, clearingPrice);
-      } catch (e) {
-        // fallback to configured gasLimit
-        gasEstimate = ethers.BigNumber.from(CONFIG.SOLVER.GAS_LIMIT || 8_000_000);
-        console.warn("estimateGas failed, using fallback gasEstimate:", gasEstimate.toString(), e.message || e);
-      }
-
-      // Add buffer
-      const gasLimit = gasEstimate.mul(110).div(100); // +10%
-
-      // Submit via private tx options if supported by provider/relayer
-      const tx = await settlementContract.settleBatch(
-        requestIds,
-        epoch,
-        marketId,
-        clearingPrice,
-        {
-          maxFeePerGas: ethers.parseUnits("0.2", "gwei"),
-          maxPriorityFeePerGas: ethers.parseUnits("0.2", "gwei"),
-          // Flashbots/proprietary: add hints for private relay if middleware picks them up
-          // e.g., custom headers at transport layer; for ethers v6, use a custom provider or signer
-          // place holder below for future integration
-          // type: 2
-        }
-      );
-
-      console.log(`Settlement transaction submitted: ${tx.hash}`);
-      const receipt = await tx.wait();
-      console.log(`Settlement completed in block ${receipt.blockNumber}`);
-
-      return receipt;
-    } catch (error) {
-      retries--;
-
-      // Handle rate limiting with exponential backoff
-      if (error.code === 'CALL_EXCEPTION' && error.info?.error?.code === -32016) {
-        console.warn(`Rate limited during settlement, retrying in ${CONFIG.SOLVER.RETRY_DELAY_MS}ms... (${retries} retries left)`);
-        if (retries > 0) {
-          await new Promise(resolve => setTimeout(resolve, CONFIG.SOLVER.RETRY_DELAY_MS));
-          continue;
-        }
-      }
-
-      console.error('Settlement transaction failed:', error);
-      if (retries === 0) {
-        throw error;
-      }
-
-      // Wait before retry for other errors
-      await new Promise(resolve => setTimeout(resolve, CONFIG.SOLVER.RETRY_DELAY_MS));
+      const gasLimit = BigInt(CONFIG.SOLVER.GAS_LIMIT)
+      const tx = await board.registerBatchValue(batchId, value, {
+        gasLimit,
+        maxFeePerGas:         ethers.parseUnits('0.2', 'gwei'),
+        maxPriorityFeePerGas: ethers.parseUnits('0.05', 'gwei'),
+      })
+      console.log(`[settlement] registerBatchValue batchId=${batchId} value=${value} tx=${tx.hash}`)
+      return await tx.wait()
+    } catch (err) {
+      attemptsLeft--
+      const waitMs = CONFIG.SOLVER.RETRY_DELAY_MS
+      if (attemptsLeft === 0) throw err
+      console.warn(`[settlement] registerBatchValue failed (${attemptsLeft} left):`, err.message)
+      await sleep(waitMs)
     }
   }
 }
 
-/**
- * Checks if a batch of intents is ready for settlement
- * @param {ethers.Provider} provider - Ethers provider
- * @param {Array} intents - Array of intent objects
- * @returns {Promise<boolean>} True if ready for settlement
- */
-async function isBatchReadyForSettlement(provider, intents) {
-  try {
-    if (intents.length < CONFIG.AUCTION.MIN_INTENTS_FOR_SETTLEMENT) {
-      return false;
+// ─── SolverBoard: submitBid ───────────────────────────────────────────────────
+
+async function submitBidTx(signer, batchId, totalSurplus, routeHash = ethers.keccak256(ethers.toUtf8Bytes(''))) {
+  const board = new ethers.Contract(CONFIG.CONTRACTS.SOLVER_BOARD, ABIS.SOLVER_BOARD_ABI, signer)
+  let attemptsLeft = CONFIG.SOLVER.MAX_RETRIES
+  while (attemptsLeft > 0) {
+    try {
+      const gasLimit = BigInt(CONFIG.SOLVER.GAS_LIMIT)
+      const tx = await board.submitBid(batchId, totalSurplus, routeHash, {
+        gasLimit,
+        maxFeePerGas:         ethers.parseUnits('0.2', 'gwei'),
+        maxPriorityFeePerGas: ethers.parseUnits('0.05', 'gwei'),
+      })
+      console.log(`[settlement] submitBid batchId=${batchId} surplus=${totalSurplus} tx=${tx.hash}`)
+      return await tx.wait()
+    } catch (err) {
+      attemptsLeft--
+      const waitMs = CONFIG.SOLVER.RETRY_DELAY_MS
+      if (attemptsLeft === 0) throw err
+      console.warn(`[settlement] submitBid failed (${attemptsLeft} left):`, err.message)
+      await sleep(waitMs)
     }
+  }
+}
 
-    const currentBlock = await provider.getBlockNumber();
-    const settlementContract = new ethers.Contract(
+// ─── SolverBoard: selectWinner ───────────────────────────────────────────────
+
+async function selectWinnerTx(signer, batchId) {
+  const board = new ethers.Contract(CONFIG.CONTRACTS.SOLVER_BOARD, ABIS.SOLVER_BOARD_ABI, signer)
+  let attemptsLeft = CONFIG.SOLVER.MAX_RETRIES
+  while (attemptsLeft > 0) {
+    try {
+      const gasLimit = BigInt(CONFIG.SOLVER.GAS_LIMIT)
+      const tx = await board.selectWinner(batchId, {
+        gasLimit,
+        maxFeePerGas:         ethers.parseUnits('0.2', 'gwei'),
+        maxPriorityFeePerGas: ethers.parseUnits('0.05', 'gwei'),
+      })
+      console.log(`[settlement] selectWinner batchId=${batchId} tx=${tx.hash}`)
+      return await tx.wait()
+    } catch (err) {
+      attemptsLeft--
+      const waitMs = CONFIG.SOLVER.RETRY_DELAY_MS
+      if (attemptsLeft === 0) throw err
+      console.warn(`[settlement] selectWinner failed (${attemptsLeft} left):`, err.message)
+      await sleep(waitMs)
+    }
+  }
+}
+
+// ─── SolverBoard: executeSettlement ─────────────────────────────────────────
+
+/**
+ * Execute batch settlement via SolverBoard.
+ * This internally calls BatchSettlement.settleBatch(payloads, epoch, marketId, clearingPrice).
+ *
+ * @param {ethers.Signer} signer
+ * @param {bigint} batchId
+ * @param {Array} intents - decoded intents with plaintext data
+ * @param {number} epoch
+ * @param {number} marketId
+ * @param {bigint} clearingPrice
+ */
+async function executeSettlementTx(signer, batchId, intents, epoch, marketId, clearingPrice) {
+  const board = new ethers.Contract(CONFIG.CONTRACTS.SOLVER_BOARD, ABIS.SOLVER_BOARD_ABI, signer)
+
+  const payloads = buildIntentPayloads(intents)
+  const routes = ethers.AbiCoder.defaultAbiCoder().encode(
+    ['tuple(uint256,bytes)[]', 'uint256', 'uint8', 'uint256'],
+    [payloads.map(p => [p.requestId, p.plaintext]), epoch, marketId, clearingPrice]
+  )
+
+  let attemptsLeft = CONFIG.SOLVER.MAX_RETRIES
+  while (attemptsLeft > 0) {
+    try {
+      let gasLimit
+      try {
+        const estimated = await board.executeSettlement.estimateGas(batchId, routes)
+        gasLimit = (estimated * 110n) / 100n
+      } catch {
+        gasLimit = BigInt(CONFIG.SOLVER.GAS_LIMIT)
+      }
+
+      const tx = await board.executeSettlement(batchId, routes, {
+        gasLimit,
+        maxFeePerGas:         ethers.parseUnits('0.2', 'gwei'),
+        maxPriorityFeePerGas: ethers.parseUnits('0.05', 'gwei'),
+      })
+      console.log(`[settlement] executeSettlement batchId=${batchId} intents=${payloads.length} tx=${tx.hash}`)
+      return await tx.wait()
+    } catch (err) {
+      attemptsLeft--
+      const waitMs = CONFIG.SOLVER.RETRY_DELAY_MS
+      if (attemptsLeft === 0) throw err
+      console.warn(`[settlement] executeSettlement failed (${attemptsLeft} left):`, err.message)
+      await sleep(waitMs)
+    }
+  }
+}
+
+// ─── SolverBoard: expireBatch ───────────────────────────────────────────────
+
+async function expireBatchTx(signer, batchId) {
+  const board = new ethers.Contract(CONFIG.CONTRACTS.SOLVER_BOARD, ABIS.SOLVER_BOARD_ABI, signer)
+  try {
+    const tx = await board.expireBatch(batchId, {
+      gasLimit: BigInt(CONFIG.SOLVER.GAS_LIMIT),
+      maxFeePerGas:         ethers.parseUnits('0.2', 'gwei'),
+      maxPriorityFeePerGas: ethers.parseUnits('0.05', 'gwei'),
+    })
+    console.log(`[settlement] expireBatch batchId=${batchId} tx=${tx.hash}`)
+    return await tx.wait()
+  } catch (err) {
+    console.warn(`[settlement] expireBatch failed:`, err.message)
+    throw err
+  }
+}
+
+// ─── Simulation ─────────────────────────────────────────────────────────────
+
+async function simulateSettlementTx(provider, intents, epoch, marketId, clearingPrice, fromAddress) {
+  try {
+    const batch = new ethers.Contract(
       CONFIG.CONTRACTS.BATCH_SETTLEMENT,
-      CONFIG.ABIS.BATCH_SETTLEMENT,
+      ABIS.BATCH_SETTLEMENT_ABI,
       provider
-    );
+    )
+    const payloads = buildIntentPayloads(intents)
+    const routes = ethers.AbiCoder.defaultAbiCoder().encode(
+      ['tuple(uint256,bytes)[]', 'uint256', 'uint8', 'uint256'],
+      [payloads.map(p => [p.requestId, p.plaintext]), epoch, marketId, clearingPrice]
+    )
+    await batch.executeWithRoutes.staticCall(0, routes, { from: fromAddress })
+    return { ok: true }
+  } catch (err) {
+    const msg = err?.error?.message ?? err?.message ?? String(err)
+    console.warn('[settlement] simulateSettlementTx reverted:', msg)
+    return { ok: false, error: msg }
+  }
+}
 
-    // Check if any intents are already settled
-    let unsettled = [];
+// ─── Readiness check ─────────────────────────────────────────────────────────
+
+async function isBatchReadyForSettlement(provider, intents) {
+  if (intents.length < CONFIG.AUCTION.MIN_INTENTS_FOR_SETTLEMENT) return false
+
+  try {
+    const contract = new ethers.Contract(
+      CONFIG.CONTRACTS.BATCH_SETTLEMENT,
+      ABIS.BATCH_SETTLEMENT_ABI,
+      provider
+    )
+
+    const unsettled = []
     for (const intent of intents) {
       try {
-        // Check if intent is already settled using the contract
-        const isSettled = await settlementContract.settledIntent(intent.requestId);
-        if (isSettled) {
-          console.log(`Intent ${intent.requestId} already settled, skipping`);
-          return false;
-        } else {
-          unsettled.push(intent);
-        }
-      } catch (error) {
-        // Handle rate limiting gracefully
-        if (error.code === 'CALL_EXCEPTION' && error.info?.error?.code === -32016) {
-          console.warn(`Rate limited checking settlement status for intent ${intent.requestId}`);
-          await new Promise(resolve => setTimeout(resolve, CONFIG.RPC.RETRY_DELAY_MS));
-          continue;
-        }
-        console.warn(`Could not check settlement status for intent ${intent.requestId}:`, error);
-        return false;
+        const isSettled = await contract.settledIntent(intent.requestId)
+        if (!isSettled) unsettled.push(intent)
+      } catch (e) {
+        console.warn(`[settlement] Could not check settled status for ${intent.requestId}:`, e.message)
       }
     }
 
-    if (unsettled.length === 0) {
-      return false; //nothing left to settle
-    }
+    if (unsettled.length < CONFIG.AUCTION.MIN_INTENTS_FOR_SETTLEMENT) return false
 
-    // Check if we have enough time before the next epoch
-    const epochEndBlock = (Math.floor(currentBlock / CONFIG.AUCTION.EPOCH_DURATION_BLOCKS) + 1) * CONFIG.AUCTION.EPOCH_DURATION_BLOCKS;
-    const blocksUntilEpochEnd = epochEndBlock - currentBlock;
+    const currentBlock  = await provider.getBlockNumber()
+    const epochEnd      = (Math.floor(currentBlock / CONFIG.AUCTION.EPOCH_DURATION_BLOCKS) + 1)
+                          * CONFIG.AUCTION.EPOCH_DURATION_BLOCKS
+    const blocksLeft    = epochEnd - currentBlock
 
-    return blocksUntilEpochEnd >= CONFIG.AUCTION.SETTLEMENT_DELAY_BLOCKS;
-  } catch (error) {
-    console.error('Error checking batch readiness:', error);
-    return false;
+    return blocksLeft >= CONFIG.AUCTION.SETTLEMENT_DELAY_BLOCKS
+  } catch (err) {
+    console.error('[settlement] isBatchReadyForSettlement error:', err.message)
+    return false
   }
 }
 
-/**
- * Validates that all intents in a batch belong to the same market and epoch
- * @param {Array} intents - Array of intent objects
- * @returns {Object} Validation result with isValid flag and details
- */
+// ─── Validation ──────────────────────────────────────────────────────────────
+
 function validateBatchConsistency(intents) {
-  if (intents.length === 0) {
-    return { isValid: false, reason: "Empty batch" };
-  }
+  if (!intents.length) return { isValid: false, reason: 'Empty batch' }
 
-  const firstIntent = intents[0];
-  const marketId = firstIntent.marketId;
-  const epoch = firstIntent.epoch;
-
+  const { marketId, epoch } = intents[0]
   for (const intent of intents) {
     if (intent.marketId !== marketId) {
-      return {
-        isValid: false,
-        reason: `Market mismatch: expected ${marketId}, got ${intent.marketId}`
-      };
+      return { isValid: false, reason: `Market mismatch: expected ${marketId}, got ${intent.marketId}` }
     }
     if (intent.epoch !== epoch) {
-      return {
-        isValid: false,
-        reason: `Epoch mismatch: expected ${epoch}, got ${intent.epoch}`
-      };
+      return { isValid: false, reason: `Epoch mismatch: expected ${epoch}, got ${intent.epoch}` }
     }
   }
-
-  return {
-    isValid: true,
-    marketId,
-    epoch,
-    intentCount: intents.length
-  };
+  return { isValid: true, marketId, epoch, intentCount: intents.length }
 }
 
-/**
- * Creates a solver signer from environment variables
- * @returns {ethers.Wallet} Solver wallet
- */
+// ─── Signer factory ──────────────────────────────────────────────────────────
+
 function createSolverSigner() {
   if (!CONFIG.SOLVER.PRIVATE_KEY) {
-    throw new Error('SOLVER_PRIVATE_KEY environment variable is required');
+    throw new Error('SOLVER_PRIVATE_KEY env var is required')
   }
-
-  const provider = new ethers.JsonRpcProvider(CONFIG.NETWORK.RPC_URL);
-  return new ethers.Wallet(CONFIG.SOLVER.PRIVATE_KEY, provider);
+  const provider = new ethers.JsonRpcProvider(CONFIG.NETWORK.RPC_URL)
+  return new ethers.Wallet(CONFIG.SOLVER.PRIVATE_KEY, provider)
 }
 
-module.exports = { simulateSettlementTx, settleBatchTx, isBatchReadyForSettlement, validateBatchConsistency, createSolverSigner };
+module.exports = {
+  buildIntentPayloads,
+  registerBatchValueTx,
+  submitBidTx,
+  selectWinnerTx,
+  executeSettlementTx,
+  expireBatchTx,
+  simulateSettlementTx,
+  isBatchReadyForSettlement,
+  validateBatchConsistency,
+  createSolverSigner,
+}

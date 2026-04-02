@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { CONFIG } from '../lib/config'
-import { BlocklockService } from '../lib/blocklock-service'
+import { IntentService } from '../lib/intent-service'
 // import { useNetworkConfig } from './useNetworkConfig'
 import { useSharedBlockNumber } from './useSharedBlockNumber'
 
@@ -45,7 +45,7 @@ export function useEpochInfo() {
       if (!blockNumber) return null
       
       const currentBlock = blockNumber
-      const currentEpoch = BlocklockService.getCurrentEpoch(currentBlock)
+      const currentEpoch = IntentService.getCurrentEpoch(currentBlock)
       const epochStartBlock = currentEpoch * CONFIG.AUCTION.EPOCH_DURATION_BLOCKS
       const epochEndBlock = epochStartBlock + CONFIG.AUCTION.EPOCH_DURATION_BLOCKS
       const blocksUntilNextEpoch = epochEndBlock - currentBlock

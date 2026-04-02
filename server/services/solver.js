@@ -1,513 +1,494 @@
-const { ethers } = require("ethers");
-const { CONFIG, MARKETS } = require("../config.js");
-const { fetchReadyIntents, groupIntentsByMarketEpoch, filterRealIntents, analyzePrivacyMetrics } = require("./intents.js");
-const { computeUniformClearingPrice } = require("./price.js");
-const { 
-  settleBatchTx, 
-  isBatchReadyForSettlement, 
-  validateBatchConsistency, 
-  createSolverSigner 
-} = require("./settlement.js");
-const IORedis = require("ioredis");
-const { dequeueRequestId } = require("../utils/queue.js");
-const { EPOCH_RNG_ABI } = require("../contracts/ABI.js");
-const redis = new IORedis(CONFIG.REDIS.URL);
 /**
- * Main solver service that orchestrates the settlement process
+ * solver.js — GhostLock/HolmeSwap SolverBoard orchestrator
+ *
+ * Flow per batch (EQUALIZE layer via SolverBoard):
+ *   1. Scan for published batches (BatchPublished events)
+ *   2. For each batch with sufficient intents:
+ *      a. Ensure VRF epoch seed (RANDOMIZE layer)
+ *      b. Compute clearing price (ENCRYPT layer output)
+ *      c. registerBatchValue(batchId, value)
+ *      d. submitBid(batchId, totalSurplus, routeHash)
+ *      e. Wait: BIDDING_WINDOW_BLOCKS + WINNER_SELECTION_BUFFER_BLOCKS
+ *      f. selectWinner(batchId)          ← owner of SolverBoard
+ *      g. executeSettlement(batchId, routes, payloads, epoch, marketId, clearingPrice)
+ *   3. Express Relay: if enabled and supported, try relay first; else SolverBoard path.
  */
+
+const { ethers } = require('ethers')
+const { CONFIG, ABIS, MARKETS } = require('../config.js')
+const { fetchDecryptedIntents, groupIntentsByMarketEpoch, filterRealIntents } = require('./intents.js')
+const { computeUniformClearingPrice } = require('./price.js')
+const {
+  buildIntentPayloads,
+  registerBatchValueTx,
+  submitBidTx,
+  selectWinnerTx,
+  executeSettlementTx,
+  expireBatchTx,
+  isBatchReadyForSettlement,
+  validateBatchConsistency,
+  createSolverSigner,
+} = require('./settlement.js')
+const { submitOpportunity, encodeSettlementCalldata } = require('../express-relay.js')
+const db = require('../utils/db.js')
+
+const ZERO_SEED = '0x' + '00'.repeat(32)
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 class SolverService {
   constructor() {
-    this.provider = new ethers.JsonRpcProvider(CONFIG.NETWORK.RPC_URL);
-    this.signer = new ethers.JsonRpcSigner(this.provider, CONFIG.NETWORK.WALLET_ADDR);
-    this.isRunning = false;
-    this.lastSettlementTime = new Date();
-    this.settlementStats = {
-      totalSettlements: 0,
-      totalVolume: 0n,
-      averageSettlementTime: 0,
-      lastError: null
-    };
-    this.requestedEpochs = new Set(); // Track epochs we've requested seeds for
-    this.epochRNGContract = null; // Will be initialized in verifyContracts
+    this.provider  = new ethers.JsonRpcProvider(CONFIG.NETWORK.RPC_URL)
+    this.signer   = null
+    this.isRunning = false
+    this.epochRNGContract = null
+    this.requestedEpochs  = new Set()
+
+    this.stats = {
+      totalSettlements:         0,
+      solverBoardSettlements:   0,
+      expressRelaySettlements:   0,
+      lastError:                null,
+      lastSettledAt:            null,
+    }
   }
 
-  /**
-   * Initialize the solver service
-   */
   async initialize() {
-    try {
-      if (CONFIG.SOLVER.PRIVATE_KEY) {
-        this.signer = createSolverSigner();
-        console.log(`Solver initialized with address: ${await this.signer.getAddress()}`);
-      } else {
-        console.warn('No solver private key provided - running in read-only mode');
-      }
-      
-      // Verify contract connections
-      await this.verifyContracts();
-      console.log('Solver service initialized successfully');
-    } catch (error) {
-      console.error('Failed to initialize solver service:', error);
-      throw error;
+    if (CONFIG.SOLVER.PRIVATE_KEY) {
+      this.signer = createSolverSigner()
+      console.log(`[solver] Signer: ${await this.signer.getAddress()}`)
+    } else {
+      console.warn('[solver] No SOLVER_PRIVATE_KEY — read-only mode')
     }
+    await this._verifyContracts()
+    console.log('[solver] Service initialized')
   }
 
-  /**
-   * Verify that all required contracts are accessible
-   */
-  async verifyContracts() {
-    const contracts = [
-      { name: 'GhostLockIntents', address: CONFIG.CONTRACTS.GHOSTLOCK_INTENTS },
-      { name: 'BatchSettlement', address: CONFIG.CONTRACTS.BATCH_SETTLEMENT },
-      { name: 'EpochRNG', address: CONFIG.CONTRACTS.EPOCH_RNG }
-    ];
-
-    for (const contract of contracts) {
-      try {
-        const code = await this.provider.getCode(contract.address);
-        if (code === '0x') {
-          throw new Error(`Contract ${contract.name} not found at ${contract.address}`);
-        }
-        console.log(`✓ ${contract.name} contract verified`);
-      } catch (error) {
-        console.error(`✗ Failed to verify ${contract.name} contract:`, error);
-        throw error;
-      }
-    }
-
-    // Initialize EpochRNG contract instance
-    this.epochRNGContract = new ethers.Contract(
-      CONFIG.CONTRACTS.EPOCH_RNG,
-      EPOCH_RNG_ABI,
-      this.provider
-    );
-  }
-
-  /**
-   * Start the solver service
-   */
   async start() {
-    if (this.isRunning) {
-      console.warn('Solver service is already running');
-      return;
-    }
-
-    this.isRunning = true;
-    console.log('Starting solver service...');
-
-    // Start the main settlement loop
-    this.settlementLoop();
-    
-    // Start health monitoring
-    this.healthCheckLoop();
+    if (this.isRunning) return
+    this.isRunning = true
+    console.log('[solver] Starting...')
+    this._settlementLoop()
+    this._healthLoop()
   }
 
-  /**
-   * Stop the solver service
-   */
   stop() {
-    this.isRunning = false;
-    console.log('Solver service stopped');
+    this.isRunning = false
+    console.log('[solver] Stopped')
   }
 
-  /**
-   * Main settlement loop - checks for ready intents and settles them
-   */
-  async settlementLoop() {
+  async _settlementLoop() {
     while (this.isRunning) {
       try {
-        await this.processSettlements();
-        await this.sleep(CONFIG.SCHEDULER.SETTLEMENT_CHECK_INTERVAL_MS);
-      } catch (error) {
-        console.error('Error in settlement loop:', error);
-        this.settlementStats.lastError = error.message;
-        
-        // Handle rate limiting with exponential backoff
-        if (error.code === 'CALL_EXCEPTION' && error.info?.error?.code === -32016) {
-          console.warn('Rate limited, backing off...');
-          await this.sleep(CONFIG.SCHEDULER.SETTLEMENT_CHECK_INTERVAL_MS * 2);
-        } else {
-          await this.sleep(CONFIG.SCHEDULER.SETTLEMENT_CHECK_INTERVAL_MS);
-        }
+        await this.processSettlements()
+      } catch (err) {
+        this.stats.lastError = err.message
+        console.error('[solver] settlement loop error:', err.message)
       }
+      await sleep(CONFIG.SCHEDULER.SETTLEMENT_CHECK_INTERVAL_MS)
     }
   }
 
-  /**
-   * Process all pending settlements
-   */
   async processSettlements() {
-    try {
-      // drain up to N items for batch building
-      const batchIds = [];
-      for (let i = 0; i < CONFIG.SOLVER.MAX_BATCH_PULL; i++) {
-        const id = await dequeueRequestId(redis);
-        if (!id) break;
-        batchIds.push(Number(id));
-      }
-  
-      if (batchIds.length === 0) {
-        console.log('No queued intents to process');
-        return;
-      }
+    const batches = await this._findActiveBatches()
+    if (!batches.length) {
+      console.log('[solver] No active batches found')
+      return
+    }
 
-      // Fetch all ready intents
-      const readyIntents = await fetchReadyIntents(this.provider);
-      
-      if (readyIntents.length === 0) {
-        console.log('No ready intents found');
-        return;
+    for (const batch of batches) {
+      try {
+        await this._processBatch(batch)
+      } catch (err) {
+        console.error(`[solver] Error processing batch ${batch.batchId}:`, err.message)
       }
-
-      // Filter out dummy intents for settlement
-      const realIntents = filterRealIntents(readyIntents);
-      
-      // Analyze privacy metrics
-      const privacyMetrics = analyzePrivacyMetrics(readyIntents);
-      console.log(`Found ${readyIntents.length} total intents (${realIntents.length} real, ${privacyMetrics.dummyIntents} dummy)`);
-      console.log(`Privacy score: ${privacyMetrics.privacyScore.toFixed(1)}%`);
-      
-      if (realIntents.length === 0) {
-        console.log('No real intents found for settlement');
-        return;
-      }
-
-      // Group real intents by market and epoch
-      const groupedIntents = groupIntentsByMarketEpoch(realIntents);
-      
-      // Process each group
-      for (const [key, intents] of Object.entries(groupedIntents)) {
-        await this.processBatch(key, intents);
-      }
-    } catch (error) {
-      console.error('Error processing settlements:', error);
-      throw error;
     }
   }
 
-  /**
-   * Process a single batch of intents
-   * @param {string} key - Market-epoch key (e.g., "0-1234")
-   * @param {Array} intents - Array of intents for this batch
-   */
-  async processBatch(key, intents) {
+  async _findActiveBatches() {
     try {
-      console.log(`Processing batch ${key} with ${intents.length} intents`);
+      const board = new ethers.Contract(
+        CONFIG.CONTRACTS.SOLVER_BOARD,
+        ABIS.SOLVER_BOARD_ABI,
+        this.provider
+      )
 
-      // Validate batch consistency
-      const validation = validateBatchConsistency(intents);
-      if (!validation.isValid) {
-        console.warn(`Batch ${key} validation failed: ${validation.reason}`);
-        return;
+      const currentBlock = await this.provider.getBlockNumber()
+      const fromBlock = Math.max(0, currentBlock - 500)
+
+      const filter = board.filters.BatchPublished()
+      const events = await board.queryFilter(filter, fromBlock, currentBlock)
+
+      const batches = []
+      for (const ev of events) {
+        const batchId    = Number(ev.args?.batchId)
+        const finalizedBlock = Number(ev.args?.finalizedBlock)
+        const biddingDeadline = Number(ev.args?.biddingDeadline)
+
+        const settled = await board.getBatch(batchId).then(b => b[6]).catch(() => true)
+        if (settled) continue
+
+        const marketId = this._inferMarketIdFromBatch(batchId)
+        const epoch    = finalizedBlock > 0
+          ? Math.floor(finalizedBlock / CONFIG.AUCTION.EPOCH_DURATION_BLOCKS)
+          : Math.floor(currentBlock / CONFIG.AUCTION.EPOCH_DURATION_BLOCKS)
+
+        batches.push({ batchId, marketId, epoch, finalizedBlock, biddingDeadline, currentBlock })
       }
 
-      // Check if batch is ready for settlement
-      const isReady = await isBatchReadyForSettlement(this.provider, intents);
-      if (!isReady) {
-        console.log(`Batch ${key} not ready for settlement yet`);
-        return;
-      }
-
-      // Ensure epoch seed exists for fair ordering (RANDOMIZE layer)
-      // This prevents sandwich attacks by randomizing intent execution order
-      const epochSeed = await this.ensureEpochSeed(validation.epoch)
-      
-      if (!epochSeed || epochSeed === '0x0000000000000000000000000000000000000000000000000000000000000000') {
-        console.warn(`Batch ${key}: Epoch seed not available, skipping settlement`);
-        return;
-      }
-
-      // Deterministic seed-based ordering (RANDOMIZE layer)
-      intents.sort((a, b) => this.compareBySeed(epochSeed, a, b))
-
-      // Compute clearing price (pass symbol; internals can use seed if needed)
-      const market = MARKETS[validation.marketId];
-      if (!market) {
-        console.warn(`Unknown market ID: ${validation.marketId}`);
-        return;
-      }
-
-      const symbol = `${market.base}-${market.quote}`;
-      const priceResult = await computeUniformClearingPrice(intents, symbol, epochSeed);
-      
-      if (priceResult.clearingPrice === 0n) {
-        console.warn(`No valid clearing price found for batch ${key}`);
-        return;
-      }
-
-      console.log(`Computed clearing price for batch ${key}: ${priceResult.clearingPrice} (${priceResult.method})`);
-
-      // Settle the batch if we have a signer
-      if (this.signer) {
-        const requestIds = intents.map(intent => intent.requestId);
-        const receipt = await settleBatchTx(
-          this.signer,
-          requestIds,
-          validation.epoch,
-          validation.marketId,
-          priceResult.clearingPrice
-        );
-
-        // Update statistics
-        this.updateSettlementStats(receipt, intents, priceResult);
-        
-        console.log(`✓ Batch ${key} settled successfully in block ${receipt.blockNumber}`);
-      } else {
-        console.log(`Would settle batch ${key} with price ${priceResult.clearingPrice} (read-only mode)`);
-      }
-    } catch (error) {
-      console.error(`Error processing batch ${key}:`, error);
-      throw error;
+      return batches
+    } catch (err) {
+      console.error('[solver] _findActiveBatches error:', err.message)
+      return []
     }
   }
 
-  /**
-   * Ensures epoch seed exists for fair ordering (RANDOMIZE layer)
-   * If seed doesn't exist, requests it and waits for VRF callback
-   * @param {number} epoch - The epoch number
-   * @returns {Promise<string>} The epoch seed (bytes32 hex string)
-   */
+  _inferMarketIdFromBatch(batchId) {
+    return 0
+  }
+
+  async _processBatch(batch) {
+    const { batchId, marketId, epoch, biddingDeadline, currentBlock } = batch
+
+    const intents = await this._fetchIntentsForBatch(marketId, epoch)
+    if (!intents.length) return
+
+    const realIntents = filterRealIntents(intents)
+    if (realIntents.length < CONFIG.AUCTION.MIN_INTENTS_FOR_SETTLEMENT) {
+      console.log(`[solver] Batch ${batchId}: not enough real intents (${realIntents.length})`)
+      return
+    }
+
+    const validation = validateBatchConsistency(realIntents)
+    if (!validation.isValid) {
+      console.warn(`[solver] Batch ${batchId} invalid: ${validation.reason}`)
+      return
+    }
+
+    const ready = await isBatchReadyForSettlement(this.provider, realIntents)
+    if (!ready) {
+      console.log(`[solver] Batch ${batchId}: not ready for settlement`)
+      return
+    }
+
+    const seed = await this.ensureEpochSeed(epoch)
+    if (!seed || seed === ZERO_SEED) {
+      console.warn(`[solver] Batch ${batchId}: epoch seed unavailable, skipping`)
+      return
+    }
+
+    realIntents.sort((a, b) => this._compareBySeed(seed, a, b))
+
+    const market = MARKETS[marketId]
+    if (!market) {
+      console.warn(`[solver] Unknown marketId: ${marketId}`)
+      return
+    }
+
+    const symbol       = `${market.base}-${market.quote}`
+    const priceResult  = await computeUniformClearingPrice(realIntents, symbol, seed)
+    if (!priceResult.clearingPrice || priceResult.clearingPrice === 0n) {
+      console.warn(`[solver] Batch ${batchId}: no valid clearing price`)
+      return
+    }
+
+    console.log(`[solver] Batch ${batchId} | price=${priceResult.clearingPrice} method=${priceResult.method} intents=${realIntents.length}`)
+
+    const batchValue    = this._computeBatchValue(realIntents, priceResult.clearingPrice)
+    const totalSurplus  = this._computeTotalSurplus(realIntents, priceResult.clearingPrice)
+    const batchKey      = `${marketId}-${epoch}`
+
+    if (CONFIG.EXPRESS_RELAY.ENABLED) {
+      const settled = await this._tryExpressRelay(batchKey, realIntents, epoch, marketId, priceResult.clearingPrice)
+      if (settled) {
+        this.stats.expressRelaySettlements++
+        this.stats.totalSettlements++
+        this.stats.lastSettledAt = new Date().toISOString()
+        db.markIntentsProcessed(realIntents.map(i => i.requestId))
+        db.markSettlementDone(batchKey)
+        return
+      }
+    }
+
+    await this._solveViaSolverBoard(batchId, realIntents, epoch, marketId, priceResult.clearingPrice, batchValue, totalSurplus, batchKey)
+  }
+
+  async _solveViaSolverBoard(batchId, intents, epoch, marketId, clearingPrice, batchValue, totalSurplus, batchKey) {
+    if (!this.signer) {
+      console.warn(`[solver] Batch ${batchId}: no signer`)
+      return
+    }
+
+    try {
+      db.upsertSettlement(batchKey, epoch, marketId, intents.map(i => i.requestId), 'solving')
+
+      await registerBatchValueTx(this.signer, BigInt(batchId), batchValue)
+
+      const routeHash = ethers.keccak256(ethers.toUtf8Bytes(''))
+      await submitBidTx(this.signer, BigInt(batchId), totalSurplus, routeHash)
+
+      const BIDDING_WINDOW = Number(await this._getSolverBoardConstant('BIDDING_WINDOW_BLOCKS', 10))
+      const BUFFER         = Number(await this._getSolverBoardConstant('WINNER_SELECTION_BUFFER_BLOCKS', 3))
+      const waitBlocks    = BIDDING_WINDOW + BUFFER
+
+      console.log(`[solver] Batch ${batchId}: waiting ${waitBlocks} blocks for bidding window + buffer...`)
+      const blockTime = CONFIG.NETWORK.BLOCK_TIME_SECONDS * 1000
+      await sleep(waitBlocks * blockTime)
+
+      await selectWinnerTx(this.signer, BigInt(batchId))
+
+      const receipt = await executeSettlementTx(
+        this.signer, BigInt(batchId), intents, epoch, marketId, clearingPrice
+      )
+
+      this.stats.solverBoardSettlements++
+      this.stats.totalSettlements++
+      this.stats.lastSettledAt = new Date().toISOString()
+      db.markIntentsProcessed(intents.map(i => i.requestId))
+      db.markSettlementDone(batchKey)
+      console.log(`[solver] Batch ${batchId} settled via SolverBoard in block ${receipt.blockNumber} ✓`)
+
+    } catch (err) {
+      db.upsertSettlement(batchKey, epoch, marketId, intents.map(i => i.requestId), 'failed')
+      console.error(`[solver] Batch ${batchId} SolverBoard settlement failed:`, err.message)
+      this.stats.lastError = err.message
+    }
+  }
+
+  async _getSolverBoardConstant(name, fallback) {
+    try {
+      const board = new ethers.Contract(CONFIG.CONTRACTS.SOLVER_BOARD, ABIS.SOLVER_BOARD_ABI, this.provider)
+      return await board[name]()
+    } catch {
+      return fallback
+    }
+  }
+
+  async _fetchIntentsForBatch(marketId, epoch) {
+    try {
+      const lastBlock    = Number(db.getKv("ghostlock:lastEventBlock") || 0)
+      if (!lastBlock) return []
+
+      const currentBlock = await this.provider.getBlockNumber()
+      const fromBlock     = Math.max(0, lastBlock - 2000)
+      const intents       = await fetchDecryptedIntents(this.provider, fromBlock, currentBlock, epoch)
+
+      return intents.filter(i => i.marketId === marketId)
+    } catch (err) {
+      console.error('[solver] _fetchIntentsForBatch error:', err.message)
+      return []
+    }
+  }
+
+  _computeBatchValue(intents, clearingPrice) {
+    let totalBuyValue = 0n
+    let totalSellValue = 0n
+    for (const intent of intents) {
+      const notional = intent.amount * clearingPrice
+      if (intent.side === 0) totalBuyValue  += notional
+      else                    totalSellValue += notional
+    }
+    return totalBuyValue < totalSellValue ? totalBuyValue : totalSellValue
+  }
+
+  _computeTotalSurplus(intents, clearingPrice) {
+    let surplus = 0n
+    for (const intent of intents) {
+      if (intent.side === 0 && clearingPrice <= intent.limitPrice) {
+        surplus += (intent.limitPrice - clearingPrice) * intent.amount
+      } else if (intent.side === 1 && clearingPrice >= intent.limitPrice) {
+        surplus += (clearingPrice - intent.limitPrice) * intent.amount
+      }
+    }
+    return surplus
+  }
+
+  async _tryExpressRelay(batchKey, intents, epoch, marketId, clearingPrice) {
+    try {
+      const payloads = buildIntentPayloads(intents)
+      const calldata = ethers.AbiCoder.defaultAbiCoder().encode(
+        ['tuple(uint256,bytes)[]', 'uint256', 'uint8', 'uint256'],
+        [payloads.map(p => [p.requestId, p.plaintext]), epoch, marketId, clearingPrice]
+      )
+
+      const submitted = await submitOpportunity({
+        batchKey,
+        targetContract: CONFIG.CONTRACTS.BATCH_SETTLEMENT,
+        calldata,
+        chainId: String(CONFIG.NETWORK.CHAIN_ID),
+      })
+
+      if (!submitted) return false
+
+      console.log(`[solver] Express Relay submitted for batch ${batchKey}, waiting...`)
+      const blockTime   = CONFIG.NETWORK.BLOCK_TIME_SECONDS * 1000
+      const startBlock  = await this.provider.getBlockNumber()
+      const deadline    = startBlock + CONFIG.EXPRESS_RELAY.FALLBACK_DELAY_BLOCKS
+
+      while (true) {
+        await sleep(blockTime)
+        const currentBlock = await this.provider.getBlockNumber()
+        if (currentBlock >= deadline) break
+        if (await this._isBatchSettled(intents.map(i => i.requestId))) return true
+      }
+
+      return await this._isBatchSettled(intents.map(i => i.requestId))
+    } catch (err) {
+      console.warn('[solver] Express Relay error:', err.message)
+      return false
+    }
+  }
+
+  async _isBatchSettled(requestIds) {
+    try {
+      const contract = new ethers.Contract(
+        CONFIG.CONTRACTS.BATCH_SETTLEMENT,
+        ABIS.BATCH_SETTLEMENT_ABI,
+        this.provider
+      )
+      const checks = await Promise.all(
+        requestIds.map(id => contract.settledIntent(id).catch(() => false))
+      )
+      return checks.every(Boolean)
+    } catch {
+      return false
+    }
+  }
+
   async ensureEpochSeed(epoch) {
     try {
-      // First, check if seed already exists
-      let seed = await this.fetchEpochSeed(epoch);
-      const isEmpty = !seed || seed === '0x0000000000000000000000000000000000000000000000000000000000000000';
-      
-      if (!isEmpty) {
-        return seed;
-      }
+      let seed = await this._fetchEpochSeed(epoch)
+      if (seed && seed !== ZERO_SEED) return seed
 
-      // Seed doesn't exist - request it if we haven't already
       if (!this.requestedEpochs.has(epoch)) {
-        console.log(`[EpochRNG] Requesting seed for epoch ${epoch} (RANDOMIZE layer)`);
-        await this.requestEpochSeed(epoch);
-        this.requestedEpochs.add(epoch);
+        await this._requestEpochSeed(epoch)
+        this.requestedEpochs.add(epoch)
       }
 
-      // Wait for seed to be available (VRF callback)
-      console.log(`[EpochRNG] Waiting for epoch ${epoch} seed from VRF...`);
-      seed = await this.waitForEpochSeed(epoch);
-      
-      return seed;
-    } catch (error) {
-      console.error(`[EpochRNG] Error ensuring epoch seed for epoch ${epoch}:`, error);
-      return '0x0000000000000000000000000000000000000000000000000000000000000000';
+      return await this._waitForEpochSeed(epoch)
+    } catch (err) {
+      console.error(`[solver] ensureEpochSeed(${epoch}) error:`, err.message)
+      return ZERO_SEED
     }
   }
 
-  /**
-   * Fetches epoch seed from EpochRNG contract (read-only)
-   * @param {number} epoch - The epoch number
-   * @returns {Promise<string>} The epoch seed or zero bytes if not available
-   */
-  async fetchEpochSeed(epoch) {
+  async _fetchEpochSeed(epoch) {
+    if (!this.epochRNGContract) {
+      this.epochRNGContract = new ethers.Contract(
+        CONFIG.CONTRACTS.EPOCH_RNG, ABIS.EPOCH_RNG_ABI, this.provider
+      )
+    }
     try {
-      if (!this.epochRNGContract) {
-        this.epochRNGContract = new ethers.Contract(
-          CONFIG.CONTRACTS.EPOCH_RNG,
-          EPOCH_RNG_ABI,
-          this.provider
-        );
-      }
-      const seed = await this.epochRNGContract.epochSeed(epoch);
-      return seed;
+      return await this.epochRNGContract.epochSeed(epoch)
     } catch (e) {
-      console.warn(`[EpochRNG] Failed to fetch epoch seed for epoch ${epoch}:`, e.message);
-      return '0x0000000000000000000000000000000000000000000000000000000000000000';
+      return ZERO_SEED
     }
   }
 
-  /**
-   * Requests epoch seed from EpochRNG contract (write transaction)
-   * This triggers VRF randomness request from Drand network
-   * @param {number} epoch - The epoch number
-   * @returns {Promise<string>} Transaction hash
-   */
-  async requestEpochSeed(epoch) {
-    if (!this.signer) {
-      throw new Error('Solver signer not available - cannot request epoch seed');
-    }
+  async _requestEpochSeed(epoch) {
+    if (!this.signer) throw new Error('No signer — cannot request epoch seed')
+
+    const rng = new ethers.Contract(CONFIG.CONTRACTS.EPOCH_RNG, ABIS.EPOCH_RNG_ABI, this.signer)
 
     try {
-      const rngContract = new ethers.Contract(
-        CONFIG.CONTRACTS.EPOCH_RNG,
-        EPOCH_RNG_ABI,
-        this.signer
-      );
-
-      // Check if seed already exists before requesting
-      const existingSeed = await rngContract.epochSeed(epoch);
-      if (existingSeed !== '0x0000000000000000000000000000000000000000000000000000000000000000') {
-        console.log(`[EpochRNG] Seed for epoch ${epoch} already exists`);
-        return null;
+      const existing = await rng.epochSeed(epoch)
+      if (existing !== ZERO_SEED) {
+        console.log(`[solver] Seed for epoch ${epoch} already exists`)
+        return
       }
+    } catch {}
 
-      const currentBlock = await this.provider.getBlockNumber();
-      const currentEpoch = Math.floor(currentBlock / CONFIG.AUCTION.EPOCH_DURATION_BLOCKS);
-      
-      if (epoch > currentEpoch + 1) {
-        console.warn(`[EpochRNG] Cannot request seed for future epoch ${epoch} (current: ${currentEpoch})`);
-        return null;
-      }
-
-      // Request seed with sufficient callback gas limit
-      const callbackGasLimit = 700000;
-      const tx = await rngContract.requestEpochSeed(epoch, callbackGasLimit, {
-        value: ethers.parseEther('0.001'),
-        maxFeePerGas: ethers.parseUnits("0.2", "gwei"),
-        maxPriorityFeePerGas: ethers.parseUnits("0.2", "gwei"),
-      });
-
-      console.log(`[EpochRNG] Epoch seed request submitted for epoch ${epoch}: ${tx.hash}`);
-      const receipt = await tx.wait();
-      
-      if (receipt.status === 0) {
-        throw new Error(`Transaction reverted for epoch ${epoch} - check contract conditions`);
-      }
-      
-      console.log(`[EpochRNG] Epoch seed request confirmed for epoch ${epoch}`);
-      return tx.hash;
-    } catch (error) {
-      if (error.message && error.message.includes('Seed exists')) {
-        console.log(`[EpochRNG] Seed for epoch ${epoch} already exists`);
-        return null;
-      }
-      if (error.receipt && error.receipt.status === 0) {
-        console.error(`[EpochRNG] Transaction reverted for epoch ${epoch} - may be too early, insufficient funds, or contract validation failed`);
-        throw error;
-      }
-      console.error(`[EpochRNG] Failed to request epoch seed for epoch ${epoch}:`, error.message || error);
-      throw error;
-    }
-  }
-
-  /**
-   * Waits for epoch seed to become available after VRF request
-   * Polls the contract until seed is available or timeout
-   * @param {number} epoch - The epoch number
-   * @param {number} maxWaitTime - Maximum time to wait in milliseconds (default: 5 minutes)
-   * @param {number} pollInterval - Polling interval in milliseconds (default: 10 seconds)
-   * @returns {Promise<string>} The epoch seed when available
-   */
-  async waitForEpochSeed(epoch, maxWaitTime = 300000, pollInterval = 10000) {
-    const startTime = Date.now();
-    const zeroSeed = '0x0000000000000000000000000000000000000000000000000000000000000000';
-
-    while (Date.now() - startTime < maxWaitTime) {
-      const seed = await this.fetchEpochSeed(epoch);
-      
-      if (seed && seed !== zeroSeed) {
-        console.log(`[EpochRNG] Epoch ${epoch} seed available: ${seed.slice(0, 10)}...`);
-        return seed;
-      }
-
-      // Wait before next poll
-      await this.sleep(pollInterval);
+    const currentBlock = await this.provider.getBlockNumber()
+    const currentEpoch = Math.floor(currentBlock / CONFIG.AUCTION.EPOCH_DURATION_BLOCKS)
+    if (epoch > currentEpoch + 1) {
+      console.warn(`[solver] Cannot request seed for future epoch ${epoch}`)
+      return
     }
 
-    console.warn(`[EpochRNG] Timeout waiting for epoch ${epoch} seed after ${maxWaitTime}ms`);
-    return zeroSeed;
+    const tx = await rng.requestEpochSeed(epoch, CONFIG.SOLVER.EPOCH_SEED_GAS_LIMIT, {
+      value:                ethers.parseEther('0.001'),
+      maxFeePerGas:         ethers.parseUnits('0.2', 'gwei'),
+      maxPriorityFeePerGas: ethers.parseUnits('0.05', 'gwei'),
+    })
+    console.log(`[solver] requestEpochSeed(${epoch}): ${tx.hash}`)
+    const receipt = await tx.wait()
+    if (receipt.status === 0) throw new Error(`EpochRNG tx reverted for epoch ${epoch}`)
   }
 
-  // Deterministic compare via keccak256(seed || requestId || user)
-  compareBySeed(seed, a, b) {
-    const ha = ethers.keccak256(ethers.concat([
-      seed,
-      ethers.zeroPadValue(ethers.toBeHex(a.requestId), 32),
-      ethers.getBytes(ethers.zeroPadValue(a.user, 32))
+  async _waitForEpochSeed(epoch, maxWaitMs = 300_000, pollMs = 10_000) {
+    const deadline = Date.now() + maxWaitMs
+    while (Date.now() < deadline) {
+      const seed = await this._fetchEpochSeed(epoch)
+      if (seed && seed !== ZERO_SEED) return seed
+      await sleep(pollMs)
+    }
+    console.warn(`[solver] Timeout waiting for epoch ${epoch} seed`)
+    return ZERO_SEED
+  }
+
+  _compareBySeed(seed, a, b) {
+    const hash = (intent) => ethers.keccak256(ethers.concat([
+      ethers.getBytes(seed),
+      ethers.zeroPadValue(ethers.toBeHex(intent.requestId), 32),
+      ethers.zeroPadValue(ethers.getBytes(intent.user), 32),
     ]))
-    const hb = ethers.keccak256(ethers.concat([
-      seed,
-      ethers.zeroPadValue(ethers.toBeHex(b.requestId), 32),
-      ethers.getBytes(ethers.zeroPadValue(b.user, 32))
-    ]))
+    const ha = hash(a), hb = hash(b)
     return ha < hb ? -1 : ha > hb ? 1 : 0
   }
 
-  /**
-   * Update settlement statistics
-   * @param {ethers.TransactionReceipt} receipt - Settlement transaction receipt
-   * @param {Array} intents - Settled intents
-   * @param {Object} priceResult - Price computation result
-   */
-  updateSettlementStats(receipt, intents, priceResult) {
-    this.settlementStats.totalSettlements++;
-    
-    // Calculate volume (simplified)
-    const volume = intents.reduce((sum, intent) => sum + intent.amount, 0n);
-    this.settlementStats.totalVolume += volume;
-    
-    // Update average settlement time
-    const now = new Date();
-    const settlementTime = now.getTime() - this.lastSettlementTime.getTime();
-    this.settlementStats.averageSettlementTime = 
-      (this.settlementStats.averageSettlementTime * (this.settlementStats.totalSettlements - 1) + settlementTime) / 
-      this.settlementStats.totalSettlements;
-    
-    this.lastSettlementTime = now;
-  }
-
-  /**
-   * Health check loop
-   */
-  async healthCheckLoop() {
+  async _healthLoop() {
     while (this.isRunning) {
       try {
-        await this.performHealthCheck();
-        await this.sleep(CONFIG.SCHEDULER.HEALTH_CHECK_INTERVAL_MS);
-      } catch (error) {
-        console.error('Health check failed:', error);
-        await this.sleep(CONFIG.SCHEDULER.HEALTH_CHECK_INTERVAL_MS);
+        const block    = await this.provider.getBlockNumber()
+        const balance  = this.signer
+          ? await this.provider.getBalance(await this.signer.getAddress())
+          : 0n
+        const balEth   = ethers.formatEther(balance)
+        console.log(`[health] block=${block} balance=${balEth} ETH`)
+        if (this.signer && balance < ethers.parseEther('0.01')) {
+          console.warn('[health] Solver balance low — replenish soon')
+        }
+      } catch (err) {
+        console.error('[health] check failed:', err.message)
       }
+      await sleep(CONFIG.SCHEDULER.HEALTH_CHECK_INTERVAL_MS)
     }
   }
 
-  /**
-   * Perform health check
-   */
-  async performHealthCheck() {
-    try {
-      const blockNumber = await this.provider.getBlockNumber();
-      const balance = this.signer ? await this.signer.provider.getBalance(await this.signer.getAddress()) : 0n;
-      console.log(`Health check - Block: ${blockNumber}, Balance: ${ethers.formatEther(balance)} ETH`);
-      
-      // Check if we have enough balance for transactions
-      if (this.signer && balance < ethers.parseEther("0.001")) {
-        console.warn('Solver balance is low - consider adding funds');
-      }
-    } catch (error) {
-      console.error('Health check error:', error);
-      throw error;
+  async _verifyContracts() {
+    const toCheck = [
+      ['GhostLockLiveness',  CONFIG.CONTRACTS.GHOSTLOCK_LIVENESS],
+      ['BatchSettlement',    CONFIG.CONTRACTS.BATCH_SETTLEMENT],
+      ['EpochRNG',           CONFIG.CONTRACTS.EPOCH_RNG],
+      ['SolverBoard',        CONFIG.CONTRACTS.SOLVER_BOARD],
+      ['SolverRegistry',     CONFIG.CONTRACTS.SOLVER_REGISTRY],
+    ]
+    for (const [name, addr] of toCheck) {
+      const code = await this.provider.getCode(addr)
+      if (code === '0x') throw new Error(`Contract ${name} not found at ${addr}`)
+      console.log(`[solver] ✓ ${name}`)
     }
+    this.epochRNGContract = new ethers.Contract(
+      CONFIG.CONTRACTS.EPOCH_RNG, ABIS.EPOCH_RNG_ABI, this.provider
+    )
   }
 
-  /**
-   * Get current solver status
-   * @returns {Object} Solver status information
-   */
   getStatus() {
     return {
       isRunning: this.isRunning,
       hasSigner: !!this.signer,
-      lastSettlementTime: this.lastSettlementTime,
-      stats: this.settlementStats,
+      stats: this.stats,
       config: {
-        network: CONFIG.NETWORK.CHAIN_ID,
+        chainId:            CONFIG.NETWORK.CHAIN_ID,
         settlementInterval: CONFIG.SCHEDULER.SETTLEMENT_CHECK_INTERVAL_MS,
-        aiEnabled: CONFIG.AI.ENABLED
-      }
-    };
-  }
-
-  /**
-   * Utility function for sleeping
-   * @param {number} ms - Milliseconds to sleep
-   */
-  sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+        expressRelayEnabled: CONFIG.EXPRESS_RELAY.ENABLED,
+        solverBoardEnabled: true,
+      },
+    }
   }
 }
 
-// Export singleton instance
-const solverService = new SolverService();
-module.exports = { solverService };
+const solverService = new SolverService()
+module.exports = { solverService }

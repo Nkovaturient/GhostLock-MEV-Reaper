@@ -20,7 +20,9 @@
   "license": "MIT",
   "dependencies": {
     "@openserv-labs/sdk": "^1.8.2",
+    "@pythnetwork/express-relay-js": "^0.29.0",
     "axios": "^1.11.0",
+    "better-sqlite3": "^12.6.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "ethers": "^6.16.0",
@@ -31,6 +33,9 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "@pythnetwork/pyth-evm-js": "^2.0.0",
+    "@types/ws": "^8.18.1",
+    "nodemon": "^3.1.10",
+    "ws": "^8.19.0"
   }
 }

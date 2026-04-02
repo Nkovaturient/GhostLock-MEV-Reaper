@@ -1,100 +1,111 @@
+require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
+
 const { solverService } = require('./services/solver.js')
 const { startIntentWatcher } = require('./services/intents-watcher.js')
 const { schedulerService } = require('./services/scheduler.js')
-require('dotenv').config();
+const db = require('./utils/db.js')
 
 const app = express()
 const PORT = process.env.PORT || 4800
 
-// Middleware
+// ─── Middleware ───────────────────────────────────────────────────────────────
+
 app.use(cors({
-  origin: ['https://ghost-lock-mev-reaper.vercel.app', 'https://ghostlock.vercel.app', 'http://localhost:3000', 'http://localhost:3001'],
+  origin: [
+    'https://ghost-lock-mev-reaper.vercel.app',
+    'https://ghostlock.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001',
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }))
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
-// Routes
+// ─── Routes ───────────────────────────────────────────────────────────────────
+
 const auctionsRouter = require('./routes/auctions')
 const intentsRouter = require('./routes/intents')
 const marketsRouter = require('./routes/markets')
 const mevRouter = require('./routes/mev')
-const aiRouter = require('./routes/ai')
-const externalRouter = require('./routes/external');
-const { metricsHandler } = require('./utils/metrics.js');
-const networkStats = require("./routes/network-stats");
-
+const externalRouter = require('./routes/external')
+const networkStats = require('./routes/network-stats')
+const { metricsHandler } = require('./utils/metrics.js')
 
 app.use('/api/auctions', auctionsRouter)
 app.use('/api/intents', intentsRouter)
 app.use('/api/markets', marketsRouter)
 app.use('/api/mev', mevRouter)
-app.use('/api/ai', aiRouter)
 app.use('/api/external', externalRouter)
-app.get('/metrics', metricsHandler);
+app.get('/metrics', metricsHandler)
 app.get('/netstats', networkStats)
 
-app.get('/', (req, res) => {
-  res.send(`GhostLocking MEV! Lets play it fair & square.`)
-})
+app.get('/', (_req, res) => res.send('GhostLocking MEV! Fair & square.'))
 
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'healthy', 
-    timestamp: new Date().toISOString(),
-    service: 'GhostLock MEV Reaper API'
-  })
-})
+app.get('/health', (_req, res) => res.json({
+  status: 'healthy',
+  timestamp: new Date().toISOString(),
+  service: 'GhostLock MEV Reaper API',
+}))
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Server error:', err)
-  res.status(500).json({ 
+
+app.use((err, _req, res, _next) => {
+  console.error('[server] Unhandled error:', err)
+  res.status(500).json({
     error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
   })
 })
 
-
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Endpoint not found' })
-})
+app.use('*', (_req, res) => res.status(404).json({ error: 'Endpoint not found' }))
 
 
 async function startServer() {
   try {
+    // Init SQLite (creates tables if not exists)
+    db.getDb()
+    console.log('[db] SQLite initialized')
+
     await solverService.initialize()
 
     app.listen(PORT, () => {
-      console.log(`🚀 GhostLock MEV Reaper server running on http://localhost:${PORT}`)
-      console.log(`Health check: http://localhost:${PORT}/health`)
-      console.log(`Solver status: http://localhost:${PORT}/api/auctions/solver/status`)
+      console.log(`🚀 GhostLock server: http://localhost:${PORT}`)
+      console.log(`   Health:  http://localhost:${PORT}/health`)
+      console.log(`   Solver:  http://localhost:${PORT}/api/auctions/solver/status`)
     })
 
-    // Start watchers and scheduler
     try {
       startIntentWatcher()
       schedulerService.start()
     } catch (e) {
-      console.error('Failed to start watcher/scheduler:', e)
+      console.error('[server] Watcher/scheduler failed to start:', e)
     }
 
     if (process.env.SOLVER_PRIVATE_KEY) {
-      console.log('🤖 Auto-starting solver service...')
+      console.log('[solver] Auto-starting settlement service...')
       await solverService.start()
     } else {
-      console.log('No SOLVER_PRIVATE_KEY provided - solver will run in read-only mode')
+      console.log('[solver] No SOLVER_PRIVATE_KEY — read-only mode')
     }
-  } catch (error) {
-    console.error(' Failed to start server:', error)
+
+    const shutdown = () => {
+      console.log('\n[server] Shutting down...')
+      solverService.stop()
+      db.close()
+      process.exit(0)
+    }
+    process.on('SIGINT', shutdown)
+    process.on('SIGTERM', shutdown)
+
+  } catch (err) {
+    console.error('[server] Failed to start:', err)
     process.exit(1)
   }
 }
 
 startServer()
-
 module.exports = app

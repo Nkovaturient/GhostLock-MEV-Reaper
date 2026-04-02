@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { ethers, Signer } from 'ethers'
-import { BlocklockService, type IntentPayload } from '../lib/blocklock-service'
+import { IntentService, type IntentPayload } from '../lib/intent-service'
 import { GHOSTLOCK_INTENTS_ABI } from '../lib/abis'
 import { useToast } from '../stores/toastStore'
 import { useEthersSigner } from './useEthers'
@@ -119,20 +119,15 @@ export function useIntentSubmission() {
     
     try {
       // Calculate epoch for the target block
-      const epoch = BlocklockService.getTargetEpoch(payload.targetBlock)
-      
-      // Create complete payload with user and epoch
+      const epoch = IntentService.getTargetEpoch(payload.targetBlock)
       const completePayload: IntentPayload = {
         ...payload,
         user: address,
-        epoch
+        epoch,
       }
-
-      const blocklockService = new BlocklockService(signer, chainId)
-      const ciphertextStruct = await blocklockService.encryptIntent(completePayload, payload.targetBlock)
-      
-      // Create condition for the unlock block (blocklock condition)
-      const condition = BlocklockService.createCondition(payload.targetBlock)
+      const intentService = new IntentService(signer, chainId)
+      const ciphertextStruct = await intentService.encryptIntent(completePayload, payload.targetBlock)
+      const condition = IntentService.createCondition(payload.targetBlock)
 
       const hash = await writeContractAsync({
         chainId: chainId,

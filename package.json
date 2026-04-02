@@ -10,6 +10,8 @@
     "server": "node server/index.js"
   },
   "dependencies": {
+    "@pythnetwork/express-relay-js": "^0.29.0",
+    "@pythnetwork/pyth-evm-js": "^2.0.0",
     "@rainbow-me/rainbowkit": "^2.2.8",
     "@react-three/drei": "^9.95.0",
     "@react-three/fiber": "^8.15.0",
@@ -18,13 +20,14 @@
     "ethers": "^6.15.0",
     "framer-motion": "^11.0.0",
     "lucide-react": "^0.541.0",
+    "onlyswaps-js": "^1.0.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.8.2",
     "tailwind-merge": "^3.3.1",
     "three": "^0.160.0",
-    "viem": "^2.35.1",
-    "wagmi": "^2.16.6",
+    "viem": "^2.45.0",
+    "wagmi": "^2.19.5",
     "zustand": "^4.5.0"
   },
   "devDependencies": {
@@ -36,6 +39,7 @@
     "autoprefixer": "^10.4.17",
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.17",
+    "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.3.3",
     "vite": "^5.0.12"
   }

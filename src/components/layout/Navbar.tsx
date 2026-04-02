@@ -8,6 +8,7 @@ import NetworkSwitcher from '../ui/NetworkSwitcher'
 
 const navigation = [
   { name: 'Trade', href: '/trade', icon: Zap },
+  { name: 'HolmeSwap', href: '/holmeswap', icon: Zap },
   { name: 'Batch Auctions', href: '/auctions', icon: Activity },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Pricing', href: '/pricing', icon: BanknoteIcon },

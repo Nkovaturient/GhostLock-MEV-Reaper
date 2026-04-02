@@ -2,7 +2,7 @@ import { useAccount, useReadContract, useWriteContract, useWaitForTransactionRec
 import { useSharedBlockNumber } from './useSharedBlockNumber'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { EPOCH_RNG_ABI } from '../lib/abis'
-import { BlocklockService } from '../lib/blocklock-service'
+import { IntentService } from '../lib/intent-service'
 import { useNetworkConfig } from './useNetworkConfig'
 import { ethers } from 'ethers'
 import { useState } from 'react'
@@ -30,7 +30,7 @@ export function useEpochRNG() {
   })
 
   const currentEpoch = blockNumber 
-    ? BlocklockService.getCurrentEpoch(blockNumber)
+    ? IntentService.getCurrentEpoch(blockNumber)
     : null
 
   // Reduced frequency - lastEpoch doesn't change frequently

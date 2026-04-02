@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
 import { RainbowKitProvider } from '@rainbow-me/rainbowkit'
@@ -9,6 +9,7 @@ import HomePage from './pages/HomePage'
 import TradePage from './pages/TradePage'
 import AuctionPage from './pages/AuctionPage'
 import AnalyticsPage from './pages/AnalyticsPage'
+import HolmeSwapPage from './holmeswap/HolmeSwapPage'
 import '@rainbow-me/rainbowkit/styles.css'
 import RevenuePage from './pages/RevenuePage'
 import { useAutoEpochSeedRequest } from './hooks/useAutoEpochSeedRequest'
@@ -25,22 +26,39 @@ const queryClient = new QueryClient({
 
 function AppContent() {
   useAutoEpochSeedRequest()
-  
+  const location = useLocation()
+  const isHolmeSwap = location.pathname === '/holmeswap'
+
+  if (isHolmeSwap) {
+    return (
+      <>
+        <HolmeSwapPage />
+        <Toaster />
+      </>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-ghost-900 via-ghost-800 to-ghost-900">
+      <Navbar />
+      <main className="relative">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/trade" element={<TradePage />} />
+          <Route path="/auctions" element={<AuctionPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/pricing" element={<RevenuePage />} />
+        </Routes>
+      </main>
+      <Toaster />
+    </div>
+  )
+}
+
+function AppRouter() {
   return (
     <Router>
-      <div className="min-h-screen bg-gradient-to-br from-ghost-900 via-ghost-800 to-ghost-900">
-        <Navbar />
-        <main className="relative">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/trade" element={<TradePage />} />
-            <Route path="/auctions" element={<AuctionPage />} />
-            <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/pricing" element={<RevenuePage />} />
-          </Routes>
-        </main>
-        <Toaster />
-      </div>
+      <AppContent />
     </Router>
   )
 }
@@ -50,7 +68,7 @@ function App() {
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider>
-          <AppContent />
+          <AppRouter />
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

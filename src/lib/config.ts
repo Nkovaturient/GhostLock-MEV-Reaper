@@ -2,11 +2,12 @@ export const CONFIG = {
   CHAIN_ID: 84532, // Base Sepolia
   RPC_URL: import.meta.env.VITE_RPC_URL || 'https://sepolia.base.org',
   CONTRACTS: {
-    GHOSTLOCK_INTENTS: import.meta.env.VITE_GHOSTLOCK_INTENTS_ADDRESS as string,
     BATCH_SETTLEMENT: import.meta.env.VITE_BATCH_SETTLEMENT_ADDRESS as string,
     EPOCH_RNG: import.meta.env.VITE_EPOCH_RNG_ADDRESS as string,
-    MOCK_ETH: import.meta.env.VITE_MOCK_ETH_ADDRESS as string,
-    MOCK_USDC: import.meta.env.VITE_MOCK_USDC_ADDRESS as string,
+    PRICE_ORACLE: import.meta.env.VITE_PRICE_ORACLE_ADDRESS as string,
+    SOLVER_BOARD: import.meta.env.VITE_SOLVER_BOARD_ADDRESS as string,
+    SOLVER_REGISTRY: import.meta.env.VITE_SOLVER_REGISTRY_ADDRESS as string,
+    GHOST_LOCK_LIVENESS: import.meta.env.VITE_GHOST_LOCK_LIVENESS_ADDRESS as string,
   },
   BASE_MAINNET: {
     chainId: 8453,
@@ -26,8 +27,11 @@ export const CONFIG = {
     chainId: 421614,
     name: 'Arbitrum Sepolia',
     rpcUrl: import.meta.env.VITE_ARBITRUM_SEPOLIA_RPC_URL || 'https://sepolia-rollup.arbitrum.io/rpc',
-    GHOSTLOCK_INTENTS: import.meta.env.VITE_ARBITRUM_SEPOLIA_GHOSTLOCK_INTENTS_ADDRESS as string,
+    GHOSTLOCK_LIVENESS: import.meta.env.VITE_ARBITRUM_SEPOLIA_GHOSTLOCK_LIVENESS_ADDRESS as string,
     EPOCH_RNG: import.meta.env.VITE_ARBITRUM_SEPOLIA_EPOCH_RNG_ADDRESS as string,
+    PRICE_ORACLE: import.meta.env.VITE_ARBITRUM_SEPOLIA_PRICE_ORACLE_ADDRESS as string,
+    SOLVER_BOARD: import.meta.env.VITE_ARBITRUM_SEPOLIA_SOLVER_BOARD_ADDRESS as string,
+    SOLVER_REGISTRY: import.meta.env.VITE_ARBITRUM_SEPOLIA_SOLVER_REGISTRY_ADDRESS as string,
   },
   API: {
     SOLVER_URL: import.meta.env.VITE_SOLVER_API_URL as string,
@@ -71,8 +75,8 @@ export const MARKETS: Market[] = [
   {
     id: 0,
     name: 'ETH/USDC',
-    baseToken: CONFIG.CONTRACTS.MOCK_ETH as string,
-    quoteToken: CONFIG.CONTRACTS.MOCK_USDC as string,
+    baseToken: CONFIG.CONTRACTS.PRICE_ORACLE as string,
+    quoteToken: CONFIG.CONTRACTS.PRICE_ORACLE as string,
     baseSymbol: 'ETH',
     quoteSymbol: 'USDC',
     baseDecimals: 18,
@@ -82,7 +86,7 @@ export const MARKETS: Market[] = [
     id: 1,
     name: 'WBTC/USDC',
     baseToken: '0x0000000000000000000000000000000000000001',
-    quoteToken: CONFIG.CONTRACTS.MOCK_USDC as string,
+    quoteToken: CONFIG.CONTRACTS.PRICE_ORACLE as string,
     baseSymbol: 'WBTC',
     quoteSymbol: 'USDC',
     baseDecimals: 8,

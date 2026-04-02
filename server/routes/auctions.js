@@ -49,16 +49,15 @@ async function fetchAuctionData() {
         id: `A-${epoch}-${marketId}`,
         market: market.name,
         clearingPrice: priceResult.clearingPrice.toString(),
-        aiPrice: priceResult.aiPrice?.toString() || null,
         intents: intents.length,
-        settlementBlock: null, // Would need to track from events
-        status: 'Ready', // All intents are ready
+        settlementBlock: null,
+        status: 'Ready',
         volume: Number(buyVolume + sellVolume),
         timestamp: Date.now() - (epoch * CONFIG.AUCTION.EPOCH_DURATION_BLOCKS * CONFIG.NETWORK.BLOCK_TIME_SECONDS * 1000),
         epoch: epoch,
         buyFill: buyVolume.toString(),
         sellFill: sellVolume.toString(),
-        method: priceResult.method
+        ref: priceResult.ref?.toString() || null,
       })
     }
     
@@ -123,14 +122,15 @@ router.get('/stats', async (req, res) => {
       totalAuctions: auctions.length,
       settledAuctions: settledCount,
       avgIntents,
-      avgSettlementTime: solverStatus.stats.averageSettlementTime,
-      successRate: solverStatus.stats.totalSettlements > 0 ? 
+      successRate: solverStatus.stats.totalSettlements > 0 ?
         ((solverStatus.stats.totalSettlements - (solverStatus.stats.lastError ? 1 : 0)) / solverStatus.stats.totalSettlements) * 100 : 100,
       solverStatus: {
         isRunning: solverStatus.isRunning,
         hasSigner: solverStatus.hasSigner,
         totalSettlements: solverStatus.stats.totalSettlements,
-        lastError: solverStatus.stats.lastError
+        lastError: solverStatus.stats.lastError,
+        solverBoardSettlements: solverStatus.stats.solverBoardSettlements,
+        expressRelaySettlements: solverStatus.stats.expressRelaySettlements,
       }
     }
     

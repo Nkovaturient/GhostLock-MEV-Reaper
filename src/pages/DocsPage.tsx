@@ -151,8 +151,8 @@ export default function DocsPage() {
                       key={section.id}
                       onClick={() => setActiveSection(section.id)}
                       className={`w-full text-left p-3 rounded-lg transition-all duration-200 flex items-center space-x-3 ${activeSection === section.id
-                          ? 'bg-primary-500/20 text-primary-400'
-                          : 'text-ghost-300 hover:bg-ghost-800 hover:text-white'
+                        ? 'bg-primary-500/20 text-primary-400'
+                        : 'text-ghost-300 hover:bg-ghost-800 hover:text-white'
                         }`}
                     >
                       <section.icon className="w-4 h-4" />
@@ -453,9 +453,9 @@ export default function DocsPage() {
                     <div className="bg-ghost-900 rounded-lg p-4 overflow-x-auto">
                       <pre className="text-sm text-ghost-300">
                         <code>{`// Submit encrypted trading intent
-import { BlocklockService } from '@ghostlock/sdk'
+import { IntentService } from '../lib/intent-service'
 
-const ghostlock = new BlocklockService(signer, chainId)
+const intentService = new IntentService(signer, chainId)
 
 const intent = {
   market: 'ETH/USDC',
@@ -466,7 +466,8 @@ const intent = {
   targetBlock: currentBlock + 20
 }
 
-const encrypted = await ghostlock.encryptIntent(intent, targetBlock)
+const payload = { ...intent, user: await signer.getAddress(), epoch: IntentService.getTargetEpoch(targetBlock) }
+const encrypted = await intentService.encryptIntent(payload, targetBlock)
 const tx = await contract.submitIntent(encrypted)`}</code>
                       </pre>
                     </div>
