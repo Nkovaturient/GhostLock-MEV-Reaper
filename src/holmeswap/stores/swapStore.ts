@@ -35,6 +35,23 @@ interface SwapState {
   mevSavings:    string
   winningBid:    string
 
+  // Price oracle fields
+  oraclePrice: number | null
+  priceConfidence: number | null
+  isPriceStale: boolean
+  lastPriceUpdate: number | null
+  priceSource: 'pyth' | 'chainlink' | 'none'
+
+  // Gas estimation
+  estimatedGasFee: string | null
+  bondAmount: string | null
+  totalCost: string | null
+
+  // MEV protection
+  encryptionStatus: 'idle' | 'encrypting' | 'encrypted' | 'revealed' | 'settled'
+  mevProtectionEnabled: boolean
+  estimatedMevSavings: number | null
+
   setTokenIn:              (token: TokenInfo)            => void
   setTokenOut:             (token: TokenInfo)            => void
   setAmountIn:             (amount: string)              => void
@@ -48,11 +65,29 @@ interface SwapState {
   setTxHash:               (hash: `0x${string}` | null) => void
   setCiphertextPreview:    (preview: string | null)      => void
   setError:                (error: string | null)        => void
-  setSlippageBps:          (bps: number)                 => void
-  setSubmissionOraclePrice:(price: number | null)        => void
-  setClearingPrice:        (price: bigint | null)        => void
-  setMevSavings:           (savings: string)             => void
-  setWinningBid:           (bid: string)                 => void
+  setSlippageBps:          (slippageBps: number)           => void
+  setSubmissionOraclePrice:(submissionOraclePrice: number | null)  => void
+  setClearingPrice:        (clearingPrice: bigint | null)        => void
+  setMevSavings:           (mevSavings: string)             => void
+  setWinningBid:           (winningBid: string)             => void
+
+  // Price oracle setters
+  setOraclePrice:          (price: number | null)        => void
+  setPriceConfidence:      (confidence: number | null)    => void
+  setIsPriceStale:         (stale: boolean)             => void
+  setLastPriceUpdate:      (timestamp: number | null)   => void
+  setPriceSource:          (source: 'pyth' | 'chainlink' | 'none') => void
+
+  // Gas estimation setters
+  setEstimatedGasFee:      (fee: string | null)         => void
+  setBondAmount:           (amount: string | null)      => void
+  setTotalCost:            (cost: string | null)        => void
+
+  // MEV protection setters
+  setEncryptionStatus:     (status: 'idle' | 'encrypting' | 'encrypted' | 'revealed' | 'settled') => void
+  setMevProtectionEnabled: (enabled: boolean)             => void
+  setEstimatedMevSavings:  (savings: number | null)       => void
+
   reset:                   ()                            => void
 }
 
@@ -69,6 +104,23 @@ export const useSwapStore = create<SwapState>((set) => ({
   slippageBps: 50,
   submissionOraclePrice: null, clearingPrice: null,
   mevSavings: '0', winningBid: '0',
+
+  // Price oracle initial
+  oraclePrice: null,
+  priceConfidence: null,
+  isPriceStale: false,
+  lastPriceUpdate: null,
+  priceSource: 'none',
+
+  // Gas estimation initial
+  estimatedGasFee: null,
+  bondAmount: null,
+  totalCost: null,
+
+  // MEV protection initial
+  encryptionStatus: 'idle',
+  mevProtectionEnabled: true,
+  estimatedMevSavings: null,
 
   setTokenIn:              (tokenIn)               => set({ tokenIn }),
   setTokenOut:             (tokenOut)              => set({ tokenOut }),
@@ -92,6 +144,23 @@ export const useSwapStore = create<SwapState>((set) => ({
   setMevSavings:           (mevSavings)             => set({ mevSavings }),
   setWinningBid:           (winningBid)             => set({ winningBid }),
 
+  // Price oracle setters
+  setOraclePrice:          (oraclePrice)            => set({ oraclePrice }),
+  setPriceConfidence:      (priceConfidence)        => set({ priceConfidence }),
+  setIsPriceStale:         (isPriceStale)           => set({ isPriceStale }),
+  setLastPriceUpdate:      (lastPriceUpdate)        => set({ lastPriceUpdate }),
+  setPriceSource:          (priceSource)            => set({ priceSource }),
+
+  // Gas estimation setters
+  setEstimatedGasFee:      (estimatedGasFee)        => set({ estimatedGasFee }),
+  setBondAmount:           (bondAmount)             => set({ bondAmount }),
+  setTotalCost:            (totalCost)              => set({ totalCost }),
+
+  // MEV protection setters
+  setEncryptionStatus:     (encryptionStatus)       => set({ encryptionStatus }),
+  setMevProtectionEnabled: (mevProtectionEnabled) => set({ mevProtectionEnabled }),
+  setEstimatedMevSavings:  (estimatedMevSavings)  => set({ estimatedMevSavings }),
+
   reset: () => set({
     amountIn: '', amountOut: '',
     step: 0, countdown: 0,
@@ -100,5 +169,22 @@ export const useSwapStore = create<SwapState>((set) => ({
     ciphertextPreview: null, error: null,
     submissionOraclePrice: null, clearingPrice: null,
     mevSavings: '0', winningBid: '0',
+
+    // Reset price oracle
+    oraclePrice: null,
+    priceConfidence: null,
+    isPriceStale: false,
+    lastPriceUpdate: null,
+    priceSource: 'none',
+
+    // Reset gas estimation
+    estimatedGasFee: null,
+    bondAmount: null,
+    totalCost: null,
+
+    // Reset MEV protection
+    encryptionStatus: 'idle',
+    mevProtectionEnabled: true,
+    estimatedMevSavings: null,
   }),
 }))
