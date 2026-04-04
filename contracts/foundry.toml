@@ -26,4 +26,23 @@ arbitrum_one     = "${RPC_URL}"
 arbitrum_sepolia = { key = "${ETHERSCAN_KEY}", url = "https://sepolia-rollup.arbitrum.io/rpc" }
 arbitrum_one     = { key = "${ETHERSCAN_KEY}", url = "https://rpc.ankr.com/arbitrum/b9d65a15e8825e0d8ddb7c2a8baad5a51a9786a01b564f600fb131ae074b0130" }
 
+[profile.default.fuzz]
+runs = 256
+max_test_rejects = 65536
+
+[profile.default.invariant]
+runs = 256
+depth = 25
+fail_on_revert = false
+call_override = false
+
+[profile.invariant_stress.fuzz]
+runs = 512
+
+[profile.invariant_stress.invariant]
+runs = 512
+depth = 40
+fail_on_revert = false
+
+# Stress: `FOUNDRY_PROFILE=invariant_stress forge test --match-contract BatchSettlementInvariant`
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

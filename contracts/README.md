@@ -30,35 +30,37 @@ SolverBoard=0x1e457f34Bdccf28258Cd30956bb6F2df614ddBEF
 
 ### IMP Variables
 
-# https://docs.pyth.network/price-feeds/contract-addresses
+-  https://docs.pyth.network/price-feeds/contract-addresses
+
+```
 PYTH_ADDRESS=0x4374e5a8b9C22271E9EB878A2AA31DE97DF15DAF   # Arbitrum Sepolia — Pyth contract on target chain
 PYTH_ADDRESS_ARB_MAINNET=0xff1a0f4744e8582DF1aE09D5611b887B6a12925C   # Arbitrum Mainnet
-
-# Pyth price IDs: https://pyth.network/price-feeds
-BASE_PYTH_ID=0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace   # ETH/USD
-QUOTE_PYTH_ID=0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a  # USDC/USD
-
-# ── dcipher / blocklock ─────────────────────────────────────────────────────
-# ARB SEPOLIA CHAIN ID: 421614
-BLOCKLOCK_SENDER_ARB_SEPOLIA=0xd22302849a87d5B00f13e504581BC086300DA080     # dcipher blocklock sender contract on arbitrum sepolia
-BLOCKLOCK_SENDER_ARB_MAINNET=0x78ebbbc39f7244bE80C76f11248f5a2645978e25
-# ARB MAINNET CHAIN ID: 42161
-RANDOMNESS_SENDER_ARB_SEPOLIA=0xf4e080Db4765C856c0af43e4A8C4e31aA3b48779    # dcipher randomness sender contract on arbitrum seopolia
-RANDOMNESS_SENDER_ARB_MAINNET=0x3BF0529293ff2F1901B2f301e56447Dcd56CBaF9
-
-## Forge — getting started
-
-Install [Foundry](https://book.getfoundry.sh/getting-started/installation), then from **`contracts/`**:
-
-```shell
-forge build
-forge test
-forge fmt
 ```
 
-Optional: `forge snapshot`, local node with `anvil`. Config: `src`, `test`, `script`, remappings to OpenZeppelin, Chainlink, Pyth, blocklock, randomness, `forge-std`.
+- Pyth price IDs: https://pyth.network/price-feeds
 
----
+```
+BASE_PYTH_ID=0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace   # ETH/USD
+QUOTE_PYTH_ID=0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a  # USDC/USD
+```
+
+# Dcipher / Blocklock contract
+
+- ARB SEPOLIA CHAIN ID: 421614
+- ARB MAINNET CHAIN ID: 42161
+- Dcipher **Blocklock sender** contract on Arbitrum sepolia
+
+```
+BLOCKLOCK_SENDER_ARB_SEPOLIA=0xd22302849a87d5B00f13e504581BC086300DA080     
+BLOCKLOCK_SENDER_ARB_MAINNET=0x78ebbbc39f7244bE80C76f11248f5a2645978e25
+```
+
+- Dcipher **Randomness sender** contract on Arbitrum seopolia
+
+```
+RANDOMNESS_SENDER_ARB_SEPOLIA=0xf4e080Db4765C856c0af43e4A8C4e31aA3b48779    
+RANDOMNESS_SENDER_ARB_MAINNET=0x3BF0529293ff2F1901B2f301e56447Dcd56CBaF9
+```
 
 ## Deploy on Arbitrum Sepolia & Arbitrum One
 
@@ -138,6 +140,26 @@ Do these on the **same chain** you deployed to (e.g. Arbitrum Sepolia `421614` o
 
 
 ---
+
+## Testing
+
+From **`contracts/`**. Layout: **`test/unit/`** (focused tests), **`test/integration/`** (multi-contract flows), **`test/invariant/`** (handler + `*.t.sol` invariants), **`test/base/`** (shared `GhostLockFixture` — no standalone tests; covered by callers), **`test/mocks/`** (test doubles — no `*.t.sol`; exercised by unit/integration/invariant).
+
+```shell
+# Fast feedback: one layer at a time
+forge test --match-path "test/unit/**"
+forge test --match-path "test/integration/**"
+forge test --match-path "test/invariant/*.t.sol"
+
+# Everything (default + fuzz/invariant settings in foundry.toml)
+forge test
+
+# Parallel (tune `-j` to CPU count)
+forge test -j8
+
+# Heavier invariant profile (see [profile.invariant_stress] in foundry.toml)
+FOUNDRY_PROFILE=invariant_stress forge test --match-path "test/invariant/*.t.sol"
+```
 
 ## Reference
 
