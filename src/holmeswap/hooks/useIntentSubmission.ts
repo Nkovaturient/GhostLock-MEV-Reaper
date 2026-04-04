@@ -5,7 +5,7 @@
  *   1. Encrypt  — dcipher blocklock threshold encryption (Layer 1)
  *   2. Submit   — Liveness.submitIntentWithBond via wagmi writeContract
  *   3. Lock     — countdown to unlockBlock via useCountdown
- *   4. Order   — poll for IntentDecrypted → VRF seed available (Layer 2)
+ *   4. Order   — useIntentDecryptedWatch / useIntentLivenessFollowup (isReady + optional forceReveal)
  *   5. Settle   — poll BatchSettlement.settledIntent (Layer 3 — SolverBoard flow)
  *
  * No server calls needed for the core intent flow.
@@ -14,42 +14,43 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { useAccount, usePublicClient, useWalletClient, useChainId, useWriteContract } from 'wagmi'
-import { parseEther, decodeEventLog, type Log } from 'viem'
+import {
+  decodeEventLog,
+  getAddress,
+  parseEventLogs,
+  type TransactionReceipt,
+} from 'viem'
 import { BrowserProvider } from 'ethers'
 
-import { useSwapStore }      from '../stores/swapStore'
-import { BlocklockService }  from '../../lib/blocklock-service'
-import {
-  LIVENESS_ABI,
-  BATCH_SETTLEMENT_ABI,
-} from '../contracts/abi'
+import { useSwapStore } from '../stores/swapStore'
+import { BlocklockService } from '../../lib/blocklock-service'
+import { GhostLockLivenessABI } from '../ABI/GhostLockLiveness'
+import { BatchSettlementABI } from '../ABI/BatchSettlement'
 import {
   getAddresses,
-  getMarketId,
   AUCTION,
 } from '../contracts/config'
-import { useEthUsdcRate } from '../../hooks/usePythPrices'
+import { useOraclePrice } from './useOraclePrice'
+import { computeIntentParamsFromOracle } from '../lib/intentEncoding'
+import { getSubmitIntentMinValueWei, getEffectiveCallbackGasLimit } from '../lib/submitIntentMinValue'
+import { getEip1559GasForWallet } from '../lib/eip1559SubmitGas'
 
-async function walletClientToSigner(
-  wc: NonNullable<ReturnType<typeof useWalletClient>['data']>
-) {
+async function walletClientToSigner(wc: any) {
   const provider = new BrowserProvider(wc.transport as any, {
-    chainId: wc.chain.id,
-    name:    wc.chain.name,
+    chainId: wc.chain?.id ?? 421614,
+    name: wc.chain?.name ?? 'Arbitrum Sepolia',
   })
-  return provider.getSigner(wc.account.address)
+  return provider.getSigner(wc.account?.address)
 }
 
 export function useIntentSubmission() {
-  const { address }            = useAccount()
-  const chainId                = useChainId()
-  const publicClient           = usePublicClient()
+  const { address } = useAccount()
+  const chainId = useChainId()
+  const publicClient = usePublicClient()
   const { data: walletClient } = useWalletClient()
   const { writeContractAsync } = useWriteContract()
-  const { rate: ethUsdcRate }  = useEthUsdcRate()
 
-  const oraclePriceRef = useRef<number | null>(null)
-  useEffect(() => { oraclePriceRef.current = ethUsdcRate ?? null }, [ethUsdcRate])
+  const { prices, isLoading: oracleLoading } = useOraclePrice()
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -65,29 +66,54 @@ export function useIntentSubmission() {
     if (!address || !amountIn || parseFloat(amountIn) <= 0) return
     if (!publicClient || !walletClient) { setError('Wallet not connected'); return }
 
+    if (oracleLoading || !prices.isValid || prices.exchangeRate == null) {
+      setError(prices.error ?? 'Wait for a valid oracle price before submitting.')
+      return
+    }
+
     reset()
 
     try {
-      const addrs    = getAddresses(chainId)
-      const marketId = getMarketId(tokenIn.symbol, tokenOut.symbol)
+      const addrs = getAddresses(chainId)
 
-      // Step 1: Encrypt (Layer 1 — dcipher blocklock threshold encryption)
+      const intentParams = computeIntentParamsFromOracle({
+        tokenInSymbol: tokenIn.symbol,
+        tokenOutSymbol: tokenOut.symbol,
+        amountIn,
+        quotePerBase: prices.exchangeRate,
+        slippageBps,
+      })
+
+      if (!intentParams) {
+        setError('Unsupported pair or invalid amount for intent encoding.')
+        return
+      }
+
+      const { side, baseAmount, limitPrice, marketId } = intentParams
+
       setIntentStatus('encrypting')
       setStep(1)
 
-      const oracleAtSubmit = oraclePriceRef.current
+      const oracleAtSubmit = prices.exchangeRate
       setSubmissionOraclePrice(oracleAtSubmit)
 
       const currentBlock = await publicClient.getBlockNumber()
-      const unlockBlock  = Number(currentBlock) + AUCTION.EPOCH_DURATION_BLOCKS
-      const epoch        = Math.floor(unlockBlock / AUCTION.EPOCH_DURATION_BLOCKS)
+      const unlockBlock = Number(currentBlock) + AUCTION.EPOCH_DURATION_BLOCKS
+      const epoch = Math.floor(unlockBlock / AUCTION.EPOCH_DURATION_BLOCKS)
 
-      const signer  = await walletClientToSigner(walletClient)
+      const signer = await walletClientToSigner(walletClient)
       const service = new BlocklockService(signer, chainId)
 
+      const sideStr: 'buy' | 'sell' = side === 0 ? 'buy' : 'sell'
+
       const ciphertext = await service.encryptIntent({
-        user: address, side: 'buy', amount: amountIn,
-        limitPrice: '0', slippageBps, marketId, epoch,
+        user: address,
+        side: sideStr,
+        amount: baseAmount,
+        limitPrice,
+        slippageBps,
+        marketId,
+        epoch,
         market: `${tokenIn.symbol}/${tokenOut.symbol}`,
       }, unlockBlock)
 
@@ -95,45 +121,67 @@ export function useIntentSubmission() {
       const ctHex = typeof ciphertext.v === 'string' ? ciphertext.v : ''
       setCiphertextPreview(ctHex.slice(0, 18) || '0xciphertext…')
 
-      // Step 2: Submit to chain
       setIntentStatus('submitting')
       setStep(2)
 
-      // Note: ERC-20 deposit via BatchSettlement.deposit() is a separate flow
-      // for when tokenIn is USDC/WBTC. For native ETH, no deposit is needed.
+      const callbackGasLimit = await getEffectiveCallbackGasLimit(
+        publicClient,
+        addrs.GhostLockLiveness,
+        AUCTION.CALLBACK_GAS_LIMIT,
+      )
+
+      const { minValue } = await getSubmitIntentMinValueWei(
+        publicClient,
+        addrs.GhostLockLiveness,
+        callbackGasLimit,
+      )
+      const value = minValue + (minValue * 5n) / 100n + 100_000n
+
+      const gasFees = await getEip1559GasForWallet(publicClient)
+
+      const ciphertextArg = {
+        u: {
+          x: ciphertext.u.x as [bigint, bigint],
+          y: ciphertext.u.y as [bigint, bigint],
+        },
+        v: ciphertext.v,
+        w: ciphertext.w,
+      }
+
+      await publicClient.simulateContract({
+        address: addrs.GhostLockLiveness,
+        abi: GhostLockLivenessABI,
+        functionName: 'submitIntentWithBond',
+        args: [callbackGasLimit, unlockBlock, condition as `0x${string}`, ciphertextArg],
+        value,
+        account: address,
+      })
 
       const txHash = await writeContractAsync({
-        address:      addrs.GhostLockLiveness,
-        abi:          LIVENESS_ABI,
+        address: addrs.GhostLockLiveness,
+        abi: GhostLockLivenessABI,
         functionName: 'submitIntentWithBond',
-        args: [
-          AUCTION.CALLBACK_GAS_LIMIT,
-          unlockBlock,
-          condition as `0x${string}`,
-          {
-            u: {
-              x: ciphertext.u.x as [bigint, bigint],
-              y: ciphertext.u.y as [bigint, bigint],
-            },
-            v: ciphertext.v,
-            w: ciphertext.w,
-          },
-        ],
-        value: parseEther(AUCTION.SUBMISSION_VALUE_ETH),
+        args: [callbackGasLimit, unlockBlock, condition as `0x${string}`, ciphertextArg],
+        value,
+        ...gasFees,
       })
 
       setTxHash(txHash)
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
 
-      const requestId = _parseRequestId(receipt.logs)
-      if (requestId == null) throw new Error('IntentSubmitted event not found in tx receipt')
+      const requestId = await resolveSubmitRequestId(
+        receipt,
+        addrs.GhostLockLiveness,
+        address,
+        publicClient,
+      )
 
       setLastRequestId(requestId)
       setTargetBlock(unlockBlock)
       setIntentStatus('locked')
-      setStep(3)
+      setStep(2)
 
-      _startPolling(requestId, addrs, publicClient, oracleAtSubmit)
+      _startPolling(requestId, addrs, publicClient, oracleAtSubmit, baseAmount)
 
     } catch (err: any) {
       const msg = err?.shortMessage ?? err?.message ?? 'Unknown error'
@@ -143,7 +191,7 @@ export function useIntentSubmission() {
     }
   }, [
     address, amountIn, chainId, tokenIn, tokenOut, slippageBps,
-    publicClient, walletClient, writeContractAsync,
+    prices, oracleLoading, publicClient, walletClient, writeContractAsync,
     setIntentStatus, setStep, setTargetBlock, setLastRequestId,
     setTxHash, setCiphertextPreview, setError,
     setSubmissionOraclePrice, setClearingPrice, setMevSavings, setWinningBid, reset,
@@ -153,71 +201,80 @@ export function useIntentSubmission() {
 
   return { submit }
 
-  function _parseRequestId(logs: readonly Log[]): number | null {
-    for (const log of logs) {
-      try {
-        const d = decodeEventLog({
-          abi:       LIVENESS_ABI,
-          eventName: 'IntentSubmitted',
-          data:      log.data,
-          topics:    log.topics as [string, ...string[]],
-        })
-        return Number((d.args as any).requestId)
-      } catch { /* not this log */ }
+  async function resolveSubmitRequestId(
+    receipt: TransactionReceipt,
+    liveness: `0x${string}`,
+    user: `0x${string}`,
+    client: NonNullable<typeof publicClient>,
+  ): Promise<number> {
+    if (receipt.status !== 'success') {
+      throw new Error(
+        'Submit transaction reverted on-chain (receipt status not success). No IntentSubmitted event.',
+      )
     }
-    return null
+
+    const livenessAddr = getAddress(liveness)
+    const logsHere = receipt.logs.filter((l) => getAddress(l.address) === livenessAddr)
+
+    const fromEvents = parseEventLogs({
+      abi: GhostLockLivenessABI,
+      eventName: 'IntentSubmitted',
+      logs: logsHere,
+    })
+
+    if (fromEvents.length > 0) {
+      const rid = fromEvents[fromEvents.length - 1].args.requestId
+      return typeof rid === 'bigint' ? Number(rid) : Number(rid)
+    }
+
+    const lastId = await client.readContract({
+      address: liveness,
+      abi: GhostLockLivenessABI,
+      functionName: 'lastRequestIdByUser',
+      args: [user],
+    }) as bigint
+
+    if (lastId === 0n) {
+      throw new Error(
+        'Could not read requestId: no IntentSubmitted log from GhostLockLiveness and lastRequestIdByUser is zero.',
+      )
+    }
+
+    return Number(lastId)
   }
 
   function _startPolling(
     requestId: number,
     addrs: ReturnType<typeof getAddresses>,
     client: NonNullable<typeof publicClient>,
-    oracleAtSubmit: number | null,
+    oracleQuotePerBase: number | null,
+    baseAmount: string,
   ) {
     if (pollingRef.current) clearInterval(pollingRef.current)
-    let phase: 'ready' | 'settled' = 'ready'
+    // let phase: 'ready' | 'settled' = 'ready'
 
     pollingRef.current = setInterval(async () => {
       try {
-        if (phase === 'ready') {
-          // Check if blocklock decryption callback fired → IntentDecrypted emitted
-          // We detect this by checking isReady on the liveness contract
-          const isReady = await client.readContract({
-            address:      addrs.GhostLockLiveness,
-            abi:          LIVENESS_ABI,
-            functionName: 'isReady',
-            args:         [BigInt(requestId)],
-          }) as boolean
+        const isSettled = await client.readContract({
+          address: addrs.BatchSettlement,
+          abi: BatchSettlementABI,
+          functionName: 'settledIntent',
+          args: [BigInt(requestId)],
+        }) as boolean
 
-          if (isReady) {
-            setIntentStatus('ordering')
-            setStep(4)
-            setTimeout(() => { setIntentStatus('competing') }, 2_000)
-            phase = 'settled'
-          }
-        } else {
-          // Check if BatchSettlement has settled this intent
-          const isSettled = await client.readContract({
-            address:      addrs.BatchSettlement,
-            abi:          BATCH_SETTLEMENT_ABI,
-            functionName: 'settledIntent',
-            args:         [BigInt(requestId)],
-          }) as boolean
-
-          if (isSettled) {
-            const cp = await _fetchClearingPrice(addrs, client)
-            setClearingPrice(cp)
-            _computeSavings(cp, oracleAtSubmit, amountIn)
-            setIntentStatus('settled')
-            setStep(5)
-            clearInterval(pollingRef.current!)
-            pollingRef.current = null
-          }
+        if (isSettled) {
+          const cp = await _fetchClearingPrice(addrs, client)
+          setClearingPrice(cp)
+          _computeSavings(cp, oracleQuotePerBase, baseAmount)
+          setIntentStatus('settled')
+          setStep(5)
+          clearInterval(pollingRef.current!)
+          pollingRef.current = null
         }
       } catch (e: any) {
         console.warn('[intent poll]', e?.message)
       }
-    }, 4_000) // poll every 4s (~1 Arb Sepolia block)
+    }, 2_500)
   }
 
   async function _fetchClearingPrice(
@@ -225,24 +282,24 @@ export function useIntentSubmission() {
     client: NonNullable<typeof publicClient>,
   ): Promise<bigint> {
     try {
-      const settledEvent = BATCH_SETTLEMENT_ABI.find(
+      const settledEvent = BatchSettlementABI.find(
         (e: any) => e.type === 'event' && e.name === 'Settled',
       ) as any
 
       const logs = await client.getLogs({
-        address:  addrs.BatchSettlement,
-        event:    settledEvent,
+        address: addrs.BatchSettlement,
+        event: settledEvent,
         fromBlock: 'earliest',
-        toBlock:  'latest',
+        toBlock: 'latest',
       })
 
       if (logs.length) {
         const last = logs[logs.length - 1]
         const d = decodeEventLog({
-          abi:       BATCH_SETTLEMENT_ABI,
+          abi: BatchSettlementABI,
           eventName: 'Settled',
-          data:      last.data,
-          topics:    last.topics as [string, ...string[]],
+          data: last.data,
+          topics: last.topics as [`0x${string}`, ...`0x${string}`[]],
         })
         return BigInt((d.args as any).clearingPrice ?? 0n)
       }
@@ -252,12 +309,11 @@ export function useIntentSubmission() {
     return 0n
   }
 
-  function _computeSavings(clearingPriceRaw: bigint, oracleUsd: number | null, amount: string) {
-    // clearingPrice is in quote units per base (e.g. USDC per ETH), already 6 dec (USDC)
-    const clearingUsd = Number(clearingPriceRaw) / 1e6
-    const qty = parseFloat(amount) || 0
-    setWinningBid((clearingUsd * qty).toFixed(2))
-    if (!oracleUsd || oracleUsd <= 0) { setMevSavings('0'); return }
-    setMevSavings(Math.max(0, (clearingUsd - oracleUsd) * qty).toFixed(2))
+  function _computeSavings(clearingPriceRaw: bigint, oracleQuotePerBase: number | null, baseAmount: string) {
+    const clearingHuman = Number(clearingPriceRaw) / 1e6
+    const qty = parseFloat(baseAmount) || 0
+    setWinningBid((clearingHuman * qty).toFixed(2))
+    if (!oracleQuotePerBase || oracleQuotePerBase <= 0) { setMevSavings('0'); return }
+    setMevSavings(Math.max(0, (clearingHuman - oracleQuotePerBase) * qty).toFixed(2))
   }
 }

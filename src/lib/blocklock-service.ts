@@ -1,6 +1,6 @@
 import { ethers } from 'ethers'
 import { Blocklock } from 'blocklock-js'
-import { MARKETS } from './config'
+import { GHOSTLOCK_MARKETS } from './ghostlockMarkets'
 
 const BLOCKLOCK_CHAIN_ID_MAP: Record<number, number> = {
   421614: 421614, // Arbitrum Sepolia
@@ -122,6 +122,18 @@ export class BlocklockService {
   }
 
   /**
+   * Fetches blocklock fulfillment status; returns the decryption key bytes when available.
+   */
+  async fetchDecryptionKeyBytes(requestId: bigint): Promise<Uint8Array | null> {
+    const blocklockChainId = getBlocklockChainId(this.chainId)
+    const blocklock = Blocklock.createFromChainId(this.signer, blocklockChainId)
+    const status = await blocklock.fetchBlocklockStatus(requestId)
+    const key = status?.decryptionKey
+    if (key == null || key.length === 0) return null
+    return key instanceof Uint8Array ? key : new Uint8Array(key)
+  }
+
+  /**
    * Attempt decryption after unlock block is reached.
    */
   async tryDecryptIntent(ciphertext: string, decryptionKey: string): Promise<IntentPayload | null> {
@@ -144,7 +156,7 @@ export class BlocklockService {
       )
 
       const marketId = Number(decoded[4])
-      const market = MARKETS.find(m => m.id === marketId)
+      const market = GHOSTLOCK_MARKETS.find(m => m.id === marketId)
 
       return {
         user:      decoded[0],
@@ -171,7 +183,7 @@ export class BlocklockService {
   }
 
   private getTokenDecimals(marketId: number, tokenType: 'base' | 'quote'): number {
-    const market = MARKETS.find(m => m.id === marketId)
+    const market = GHOSTLOCK_MARKETS.find(m => m.id === marketId)
     if (!market) return 18
     return tokenType === 'base' ? market.baseDecimals : market.quoteDecimals
   }

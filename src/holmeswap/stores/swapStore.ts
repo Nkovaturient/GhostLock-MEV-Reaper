@@ -16,7 +16,11 @@ export type IntentStatus =
   | 'settled'
   | 'error'
 
+
+export type TradeTab = 'swap' | 'limit' | 'buy' | 'sell'
+
 interface SwapState {
+  tradeTab: TradeTab
   tokenIn:   TokenInfo
   tokenOut:  TokenInfo
   amountIn:  string
@@ -27,6 +31,7 @@ interface SwapState {
   targetBlock:   number
   lastRequestId: number | null
   txHash:            `0x${string}` | null
+  revealTxHash:      `0x${string}` | null
   ciphertextPreview: string | null
   error:             string | null
   slippageBps: number
@@ -52,6 +57,7 @@ interface SwapState {
   mevProtectionEnabled: boolean
   estimatedMevSavings: number | null
 
+  setTradeTab:             (tab: TradeTab)                 => void
   setTokenIn:              (token: TokenInfo)            => void
   setTokenOut:             (token: TokenInfo)            => void
   setAmountIn:             (amount: string)              => void
@@ -63,6 +69,7 @@ interface SwapState {
   setTargetBlock:          (block: number)               => void
   setLastRequestId:        (id: number | null)           => void
   setTxHash:               (hash: `0x${string}` | null) => void
+  setRevealTxHash:         (hash: `0x${string}` | null) => void
   setCiphertextPreview:    (preview: string | null)      => void
   setError:                (error: string | null)        => void
   setSlippageBps:          (slippageBps: number)           => void
@@ -95,11 +102,12 @@ const ETH:  TokenInfo = { symbol: 'ETH',  address: '', decimals: 18 }
 const USDC: TokenInfo = { symbol: 'USDC', address: '', decimals: 6  }
 
 export const useSwapStore = create<SwapState>((set) => ({
+  tradeTab: 'swap',
   tokenIn: ETH, tokenOut: USDC,
   amountIn: '', amountOut: '',
   step: 0, countdown: 0,
   intentStatus: 'idle', targetBlock: 0,
-  lastRequestId: null, txHash: null,
+  lastRequestId: null, txHash: null, revealTxHash: null,
   ciphertextPreview: null, error: null,
   slippageBps: 50,
   submissionOraclePrice: null, clearingPrice: null,
@@ -122,6 +130,7 @@ export const useSwapStore = create<SwapState>((set) => ({
   mevProtectionEnabled: true,
   estimatedMevSavings: null,
 
+  setTradeTab:             (tradeTab)              => set({ tradeTab }),
   setTokenIn:              (tokenIn)               => set({ tokenIn }),
   setTokenOut:             (tokenOut)              => set({ tokenOut }),
   setAmountIn:             (amountIn)              => set({ amountIn }),
@@ -136,6 +145,7 @@ export const useSwapStore = create<SwapState>((set) => ({
   setTargetBlock:          (targetBlock)           => set({ targetBlock }),
   setLastRequestId:        (lastRequestId)         => set({ lastRequestId }),
   setTxHash:               (txHash)                => set({ txHash }),
+  setRevealTxHash:         (revealTxHash)          => set({ revealTxHash }),
   setCiphertextPreview:    (ciphertextPreview)      => set({ ciphertextPreview }),
   setError:                (error)                 => set({ error }),
   setSlippageBps:          (slippageBps)           => set({ slippageBps }),
@@ -165,7 +175,7 @@ export const useSwapStore = create<SwapState>((set) => ({
     amountIn: '', amountOut: '',
     step: 0, countdown: 0,
     intentStatus: 'idle', targetBlock: 0,
-    lastRequestId: null, txHash: null,
+    lastRequestId: null, txHash: null, revealTxHash: null,
     ciphertextPreview: null, error: null,
     submissionOraclePrice: null, clearingPrice: null,
     mevSavings: '0', winningBid: '0',

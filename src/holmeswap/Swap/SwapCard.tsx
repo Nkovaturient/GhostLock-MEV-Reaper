@@ -4,12 +4,15 @@ import { AlertTriangle, Info, FuelIcon } from 'lucide-react'
 import TokenInput from './TokenInput'
 import SwapButton from './SwapButton'
 import { SwapArrowButton } from './TokenInput'
+import SwapTradeTabs from './SwapTradeTabs'
 import LivePriceDisplay from './LivePriceDisplay'
 import MEVProtectionPanel from './MEVProtectionPanel'
-/* cn utility imported but not needed currently */
 import { useOraclePrice, useSwapCalculation } from '../hooks/useOraclePrice'
 import { useGasEstimate, useMevSavingsEstimate } from '../hooks/useGasEstimate'
-import { useSwapStore } from '../stores/swapStore'
+import { useSwapStore, type TokenInfo } from '../stores/swapStore'
+
+const PRESET_ETH: TokenInfo = { symbol: 'ETH', address: '', decimals: 18 }
+const PRESET_USDC: TokenInfo = { symbol: 'USDC', address: '', decimals: 6 }
 
 interface SwapCardProps {
   onSubmit?:          () => void
@@ -38,6 +41,10 @@ export default function SwapCard({
 
   const intentStatus = useSwapStore(s => s.intentStatus)
   const amountIn = useSwapStore(s => s.amountIn)
+  const tradeTab = useSwapStore(s => s.tradeTab)
+  const setTokenIn = useSwapStore(s => s.setTokenIn)
+  const setTokenOut = useSwapStore(s => s.setTokenOut)
+  const setAmountIn = useSwapStore(s => s.setAmountIn)
 
   // Update amountOut in store when calculated
   const setAmountOut = useSwapStore(s => s.setAmountOut)
@@ -47,6 +54,19 @@ export default function SwapCard({
     setAmountOut(amountOut)
     setEstimatedMevSavings(estimatedSavings)
   }, [amountOut, estimatedSavings, setAmountOut, setEstimatedMevSavings])
+
+  /** Buy = USDC→ETH, Sell = ETH→USDC presets (primary market); Swap/Limit leave pair user-defined. */
+  React.useEffect(() => {
+    if (tradeTab === 'buy') {
+      setTokenIn(PRESET_USDC)
+      setTokenOut(PRESET_ETH)
+      setAmountIn('')
+    } else if (tradeTab === 'sell') {
+      setTokenIn(PRESET_ETH)
+      setTokenOut(PRESET_USDC)
+      setAmountIn('')
+    }
+  }, [tradeTab, setTokenIn, setTokenOut, setAmountIn])
 
   // Check if swap is ready
   const canSwap = isConnected &&
@@ -63,12 +83,19 @@ export default function SwapCard({
       variants={{ visible: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } } }}
       className="rounded-3xl p-6 holme-glass-card overflow-visible"
     >
-      <motion.div variants={cardItem} className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold text-foreground">Swap</h2>
-        <div className="flex items-center gap-2 text-xs text-slate-400">
-          <Info className="w-3.5 h-3.5" />
-          <span>MEV Protected</span>
+      <motion.div variants={cardItem} className="flex flex-col gap-3 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <SwapTradeTabs />
+          <div className="flex items-center gap-2 text-xs text-slate-400 shrink-0">
+            <Info className="w-3.5 h-3.5" />
+            <span>MEV Protected</span>
+          </div>
         </div>
+        {tradeTab === 'limit' && (
+          <p className="text-xs text-muted-foreground leading-relaxed rounded-xl bg-muted/25 px-3 py-2.5 border border-border/25">
+            Limit orders use the same GhostLock intent: execution bounds come from the live oracle ± your slippage setting. Custom limit prices can be added later.
+          </p>
+        )}
       </motion.div>
 
       {/* Token Input */}
@@ -104,20 +131,31 @@ export default function SwapCard({
         <LivePriceDisplay />
       </motion.div>
 
-      {/* Gas Estimate */}
+      {/* Gas + bond estimate */}
       {canSwap && (
         <motion.div
           variants={cardItem}
-          className="mt-3 p-3 rounded-xl bg-slate-900/50 border border-slate-700/30"
+          className="mt-3 rounded-2xl border border-border/50 bg-card/80 p-3 sm:p-4 backdrop-blur-md shadow-holme-soft"
         >
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2 text-slate-400">
-              <FuelIcon className="w-4 h-4" />
-              <span>Total Cost</span>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10">
+                <FuelIcon className="h-4 w-4 text-primary" aria-hidden />
+              </div>
+              <div className="min-w-0">
+                <span className="text-xs sm:text-sm font-semibold text-foreground">Total Cost</span>
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 leading-snug">
+                  Bond + estimated network fee
+                </p>
+              </div>
             </div>
-            <div className="text-right">
-              <span className="text-slate-200 font-medium">{totalCost}</span>
-              <span className="text-xs text-slate-500 ml-2">(includes bond)</span>
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:text-right sm:justify-end pl-11 sm:pl-0">
+              <span className="text-sm sm:text-base font-bold tabular-nums text-foreground break-all">
+                {totalCost}
+              </span>
+              <span className="text-[10px] sm:text-xs text-muted-foreground shrink-0">
+                (includes bond)
+              </span>
             </div>
           </div>
         </motion.div>

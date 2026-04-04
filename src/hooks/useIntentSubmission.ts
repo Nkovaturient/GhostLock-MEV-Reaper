@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
-import { ethers, Signer } from 'ethers'
+import { ethers } from 'ethers'
 import { IntentService, type IntentPayload } from '../lib/intent-service'
 import { GHOSTLOCK_INTENTS_ABI } from '../lib/abis'
 import { useToast } from '../stores/toastStore'
@@ -10,7 +10,8 @@ import { addRequestId } from '../stores/requestIdStore'
 import { useNetworkConfig } from './useNetworkConfig'
 import { useSharedBlockNumber } from './useSharedBlockNumber'
 
-export function useIntentSubmission() {
+/** GhostLockIntents (legacy) — not used by HolmeSwap / GhostLockLiveness. */
+export function useLegacyGhostLockIntentsSubmission() {
   const queryClient = useQueryClient()
   const { address, chainId: connectedChainId } = useAccount()
   const { CONTRACT_ADDRESS, chainId: networkChainId, isSupported } = useNetworkConfig()

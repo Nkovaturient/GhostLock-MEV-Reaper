@@ -9,6 +9,8 @@ import ProcessTimeline     from './Timeline/ProcessTimeline'
 import { holmeswapBg }        from './assets/index'
 import { useSwapStore }        from './stores/swapStore'
 import { useIntentSubmission } from './hooks/useIntentSubmission'
+import { useIntentDecryptedWatch } from './hooks/useIntentDecryptedWatch'
+import { useIntentLivenessFollowup } from './hooks/useIntentLivenessFollowup'
 import { useCountdown }        from './hooks/useCountdown'
 import { useTokenBalance }     from './hooks/useTokenBalance'
 
@@ -20,6 +22,8 @@ const containerVariants = {
 export default function HolmeSwapPage() {
   const { isConnected } = useAccount()
   const { submit }      = useIntentSubmission()
+  useIntentDecryptedWatch()
+  useIntentLivenessFollowup()
   const intentStatus    = useSwapStore(s => s.intentStatus)
   const targetBlock     = useSwapStore(s => s.targetBlock)
   const error           = useSwapStore(s => s.error)

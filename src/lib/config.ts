@@ -1,3 +1,5 @@
+import { GHOSTLOCK_MARKETS } from './ghostlockMarkets'
+
 export const CONFIG = {
   CHAIN_ID: 84532, // Base Sepolia
   RPC_URL: import.meta.env.VITE_RPC_URL || 'https://sepolia.base.org',
@@ -52,9 +54,9 @@ export const CONFIG = {
     MAX_TARGET_OFFSET: 100,
   },
   
-  // Auction Configuration
+  // Auction Configuration (align with holmeswap/contracts/config + server/config.js)
   AUCTION: {
-    EPOCH_DURATION_BLOCKS: 50,
+    EPOCH_DURATION_BLOCKS: 100,
     SETTLEMENT_DELAY_BLOCKS: 5,
     MAX_INTENTS_PER_BATCH: 100,
   }
@@ -71,25 +73,13 @@ export type Market = {
   quoteDecimals: number
 }
 
-export const MARKETS: Market[] = [
-  {
-    id: 0,
-    name: 'ETH/USDC',
-    baseToken: CONFIG.CONTRACTS.PRICE_ORACLE as string,
-    quoteToken: CONFIG.CONTRACTS.PRICE_ORACLE as string,
-    baseSymbol: 'ETH',
-    quoteSymbol: 'USDC',
-    baseDecimals: 18,
-    quoteDecimals: 6,
-  },
-  {
-    id: 1,
-    name: 'WBTC/USDC',
-    baseToken: '0x0000000000000000000000000000000000000001',
-    quoteToken: CONFIG.CONTRACTS.PRICE_ORACLE as string,
-    baseSymbol: 'WBTC',
-    quoteSymbol: 'USDC',
-    baseDecimals: 8,
-    quoteDecimals: 6,
-  }
-]
+export const MARKETS: Market[] = GHOSTLOCK_MARKETS.map(m => ({
+  id: m.id,
+  name: m.name,
+  baseToken: CONFIG.CONTRACTS.PRICE_ORACLE as string,
+  quoteToken: CONFIG.CONTRACTS.PRICE_ORACLE as string,
+  baseSymbol: m.base,
+  quoteSymbol: m.quote,
+  baseDecimals: m.baseDecimals,
+  quoteDecimals: m.quoteDecimals,
+}))

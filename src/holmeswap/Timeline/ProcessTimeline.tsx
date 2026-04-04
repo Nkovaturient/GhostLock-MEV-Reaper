@@ -3,6 +3,12 @@ import { motion } from 'framer-motion'
 import { useSwapStore } from '../stores/swapStore'
 import { LockIcon3D, CageLockIcon, DiceIcon3D, SolverIcon, CoinStackIcon } from '../assets/IllustrationIcons.tsx'
 import { cn } from '../../lib/utils'
+import IntentProofRow from '../Swap/IntentProofRow'
+import { useIntentReady } from '../hooks/useIntentReady'
+import { useBlocklockSender } from '../hooks/useBlocklockSender'
+import { getExplorerTxUrl, getExplorerAddressUrl } from '../lib/blockExplorer'
+import { getAddresses } from '../contracts/config'
+import { useChainId } from 'wagmi'
 
 interface TimelineStep {
   id: number
@@ -91,9 +97,20 @@ function StepCard({ step, index }: { step: TimelineStep; index: number }) {
 }
 
 export default function ProcessTimeline() {
+  const chainId = useChainId()
   const step = useSwapStore((s) => s.step)
   const countdown = useSwapStore((s) => s.countdown)
   const winningBid = useSwapStore((s) => s.winningBid)
+  const lastRequestId = useSwapStore((s) => s.lastRequestId)
+  const txHash = useSwapStore((s) => s.txHash)
+  const revealTxHash = useSwapStore((s) => s.revealTxHash)
+  const targetBlock = useSwapStore((s) => s.targetBlock)
+  const ciphertextPreview = useSwapStore((s) => s.ciphertextPreview)
+  const intentStatus = useSwapStore((s) => s.intentStatus)
+
+  const { isReady, isLoading: isReadyLoading } = useIntentReady()
+  const { blocklockSender, isLoading: blocklockLoading } = useBlocklockSender()
+  const addrs = getAddresses(chainId)
 
   const getStatus = (stepNum: number): 'pending' | 'active' | 'complete' => {
     if (stepNum < step) return 'complete'
@@ -110,6 +127,16 @@ export default function ProcessTimeline() {
       icon: <LockIcon3D className="w-full h-full" animate={step === 1} />,
       status: getStatus(1),
       badge: step === 1 ? 'Submit...' : step > 1 ? '✓' : undefined,
+      extra: step >= 1 && (lastRequestId || ciphertextPreview || targetBlock) ? (
+        <div className="space-y-1.5">
+          {ciphertextPreview && (
+            <IntentProofRow label="Ciphertext" value={ciphertextPreview} />
+          )}
+          {targetBlock > 0 && (
+            <IntentProofRow label="Unlock block" value={String(targetBlock)} />
+          )}
+        </div>
+      ) : undefined,
     },
     {
       id: 2,
@@ -119,6 +146,50 @@ export default function ProcessTimeline() {
       icon: <CageLockIcon className="w-full h-full" />,
       status: getStatus(2),
       timer: step >= 2 ? countdown : undefined,
+      extra: step >= 2 && (lastRequestId || txHash) ? (
+        <div className="space-y-1.5">
+          {lastRequestId != null && (
+            <IntentProofRow label="Request ID" value={lastRequestId} />
+          )}
+          {txHash && (
+            <IntentProofRow
+              label="Submit tx"
+              value={txHash}
+              href={getExplorerTxUrl(chainId, txHash)}
+            />
+          )}
+          {intentStatus === 'locked' && lastRequestId != null && (
+            <>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">On-chain ready:</span>
+                {isReadyLoading ? (
+                  <span className="inline-block w-12 h-3 bg-muted rounded animate-pulse" />
+                ) : (
+                  <span className={cn(
+                    'font-medium',
+                    isReady ? 'text-holme-green-success' : 'text-holme-warning'
+                  )}>
+                    {isReady ? 'Yes' : 'Pending oracle'}
+                  </span>
+                )}
+              </div>
+              <IntentProofRow
+                label="Liveness"
+                value={addrs.GhostLockLiveness}
+                href={getExplorerAddressUrl(chainId, addrs.GhostLockLiveness)}
+              />
+              {(blocklockLoading || blocklockSender) && (
+                <IntentProofRow
+                  label="Blocklock sender"
+                  value={blocklockSender ?? '—'}
+                  href={blocklockSender ? getExplorerAddressUrl(chainId, blocklockSender) : null}
+                  isLoading={blocklockLoading}
+                />
+              )}
+            </>
+          )}
+        </div>
+      ) : undefined,
     },
     {
       id: 3,
@@ -127,6 +198,13 @@ export default function ProcessTimeline() {
       color: 'hsl(var(--holme-mint))',
       icon: <DiceIcon3D className="w-full h-full" animate={step === 3} />,
       status: getStatus(3),
+      extra: step >= 3 && revealTxHash ? (
+        <IntentProofRow
+          label="Reveal tx"
+          value={revealTxHash}
+          href={getExplorerTxUrl(chainId, revealTxHash)}
+        />
+      ) : undefined,
     },
     {
       id: 4,

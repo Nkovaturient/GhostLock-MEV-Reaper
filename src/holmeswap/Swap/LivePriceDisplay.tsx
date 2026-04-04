@@ -43,10 +43,30 @@ export default function LivePriceDisplay({ className }: LivePriceDisplayProps) {
   }, [prices.base?.confidenceBps])
 
   const confidenceConfig = {
-    high: { color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', label: 'High' },
-    medium: { color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', label: 'Medium' },
-    low: { color: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/20', label: 'Low' },
-    neutral: { color: 'text-slate-400', bg: 'bg-slate-500/10', border: 'border-slate-500/20', label: '—' },
+    high: {
+      color: 'text-holme-green-success',
+      bg: 'bg-holme-green-success/15',
+      border: 'border-holme-green-success/30',
+      label: 'High',
+    },
+    medium: {
+      color: 'text-holme-warning',
+      bg: 'bg-holme-warning/15',
+      border: 'border-holme-warning/30',
+      label: 'Medium',
+    },
+    low: {
+      color: 'text-destructive',
+      bg: 'bg-destructive/10',
+      border: 'border-destructive/25',
+      label: 'Low',
+    },
+    neutral: {
+      color: 'text-muted-foreground',
+      bg: 'bg-muted/60',
+      border: 'border-border/50',
+      label: '—',
+    },
   }
 
   const config = confidenceConfig[confidenceColor]
@@ -61,34 +81,44 @@ export default function LivePriceDisplay({ className }: LivePriceDisplayProps) {
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        "rounded-xl p-4 border backdrop-blur-sm",
-        prices.isValid ? "bg-slate-900/50 border-slate-700/30" : "bg-rose-500/5 border-rose-500/20",
+        'rounded-2xl p-3 sm:p-4 border backdrop-blur-md shadow-holme-soft',
+        prices.isValid
+          ? 'bg-card/80 border-border/50'
+          : 'bg-destructive/5 border-destructive/25',
         className
       )}
     >
       {/* Header with refresh countdown */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Activity className={cn(
-            "w-4 h-4",
-            isLoading ? "text-amber-400 animate-pulse" : "text-slate-400"
-          )} />
-          <span className="text-xs font-medium text-slate-400">Live Oracle Price</span>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <Activity
+            className={cn(
+              'w-4 h-4 shrink-0',
+              isLoading ? 'text-holme-warning animate-pulse' : 'text-primary/70'
+            )}
+          />
+          <span className="text-xs sm:text-sm font-semibold text-foreground truncate">
+            Live Oracle Price
+          </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={refresh}
-            className="p-1 rounded-lg hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-xl hover:bg-muted/80 border border-transparent hover:border-border/40 transition-colors"
             disabled={isLoading}
+            type="button"
+            aria-label="Refresh oracle price"
           >
-            <RefreshCw className={cn(
-              "w-3.5 h-3.5 text-slate-500",
-              isLoading && "animate-spin"
-            )} />
+            <RefreshCw
+              className={cn(
+                'w-3.5 h-3.5 text-muted-foreground',
+                isLoading && 'animate-spin'
+              )}
+            />
           </motion.button>
-          <span className="text-[10px] font-mono text-slate-500 tabular-nums w-6 text-center">
+          <span className="text-[10px] sm:text-xs font-mono text-muted-foreground tabular-nums min-w-[1.75rem] text-center">
             {nextRefreshIn}s
           </span>
         </div>
@@ -96,59 +126,69 @@ export default function LivePriceDisplay({ className }: LivePriceDisplayProps) {
 
       {/* Price error */}
       {prices.error && (
-        <div className="flex items-center gap-2 p-2 mb-3 rounded-lg bg-rose-500/10 border border-rose-500/20">
-          <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0" />
-          <span className="text-xs text-rose-300">{prices.error}</span>
+        <div className="flex items-center gap-2 p-2.5 mb-3 rounded-xl bg-destructive/10 border border-destructive/25">
+          <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
+          <span className="text-xs text-destructive">{prices.error}</span>
         </div>
       )}
 
       {/* Exchange rate */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-slate-500" />
-          <span className={cn(
-            "text-sm font-medium",
-            prices.isValid ? "text-slate-200" : "text-slate-500"
-          )}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-1 sm:mb-3 min-w-0">
+        <div className="flex items-start sm:items-center gap-2 min-w-0">
+          <TrendingUp className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5 sm:mt-0" />
+          <span
+            className={cn(
+              'text-sm sm:text-base font-semibold break-words',
+              prices.isValid ? 'text-foreground' : 'text-muted-foreground'
+            )}
+          >
             {rateText}
           </span>
         </div>
-        <div className={cn(
-          "px-2 py-1 rounded-lg text-[10px] font-medium border",
-          config.bg, config.border, config.color
-        )}>
+        <div
+          className={cn(
+            'px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-semibold border shrink-0 self-start sm:self-center',
+            config.bg,
+            config.border,
+            config.color
+          )}
+        >
           {config.label} Confidence
         </div>
       </div>
 
       {/* Price details grid */}
       {prices.isValid && (
-        <div className="grid grid-cols-2 gap-3 mt-3">
-          {/* Input value */}
-          <div className="p-2.5 rounded-lg bg-slate-950/50">
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider">Input Value</span>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-sm font-semibold text-slate-200">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-3">
+          <div className="p-3 rounded-xl bg-muted/45 border border-border/35 min-w-0">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+              Input Value
+            </span>
+            <div className="flex items-baseline flex-wrap gap-x-1 gap-y-0 mt-1">
+              <span className="text-sm sm:text-base font-semibold text-foreground tabular-nums">
                 {amountIn || '0'}
               </span>
-              <span className="text-xs text-slate-500">{tokenIn.symbol}</span>
+              <span className="text-xs text-muted-foreground">{tokenIn.symbol}</span>
             </div>
-            {usdValueIn && (
-              <span className="text-[10px] text-slate-500">≈ ${usdValueIn.toFixed(2)}</span>
+            {usdValueIn != null && (
+              <span className="text-[10px] sm:text-xs text-muted-foreground block mt-0.5">
+                ≈ ${usdValueIn.toFixed(2)}
+              </span>
             )}
           </div>
 
-          {/* Expected output */}
-          <div className="p-2.5 rounded-lg bg-slate-950/50">
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider">Expected Output</span>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-sm font-semibold text-slate-200">
+          <div className="p-3 rounded-xl bg-muted/45 border border-border/35 min-w-0">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+              Expected Output
+            </span>
+            <div className="flex items-baseline flex-wrap gap-x-1 gap-y-0 mt-1">
+              <span className="text-sm sm:text-base font-semibold text-foreground tabular-nums break-all">
                 {amountOut || '—'}
               </span>
-              <span className="text-xs text-slate-500">{tokenOut.symbol}</span>
+              <span className="text-xs text-muted-foreground shrink-0">{tokenOut.symbol}</span>
             </div>
             {amountOutMin && (
-              <span className="text-[10px] text-emerald-400">
+              <span className="text-[10px] sm:text-xs text-holme-green-success font-medium block mt-0.5">
                 ≥ {parseFloat(amountOutMin).toFixed(4)} min
               </span>
             )}
@@ -158,18 +198,22 @@ export default function LivePriceDisplay({ className }: LivePriceDisplayProps) {
 
       {/* Price source info */}
       {prices.base?.source && prices.quote?.source && (
-        <div className="mt-3 flex items-center gap-3 text-[10px] text-slate-500">
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] sm:text-xs text-muted-foreground">
           <span>Source: Pyth + Chainlink</span>
-          <span className="text-slate-700">•</span>
+          <span className="text-border" aria-hidden>
+            •
+          </span>
           <span>Refreshed: {new Date().toLocaleTimeString()}</span>
         </div>
       )}
 
       {/* Slippage info */}
-      <div className="mt-3 pt-3 border-t border-slate-800">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-500">Slippage Tolerance</span>
-          <span className="text-slate-300">{(slippageBps / 100).toFixed(1)}%</span>
+      <div className="mt-3 pt-3 border-t border-border/40">
+        <div className="flex items-center justify-between gap-2 text-xs sm:text-sm">
+          <span className="text-muted-foreground">Slippage Tolerance</span>
+          <span className="font-semibold text-foreground tabular-nums">
+            {(slippageBps / 100).toFixed(1)}%
+          </span>
         </div>
       </div>
     </motion.div>

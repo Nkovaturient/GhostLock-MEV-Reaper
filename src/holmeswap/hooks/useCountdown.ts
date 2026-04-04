@@ -1,11 +1,24 @@
 import { useEffect, useState } from 'react'
-import { useBlockNumber } from 'wagmi'
+import { useBlockNumber, useChainId } from 'wagmi'
 
-const BLOCKS_PER_COUNTDOWN = 100
-const AVG_BLOCK_TIME_SEC = 2
+/** Arbitrum L2 ~0.25s/block; other chains use a conservative default */
+const SEC_PER_BLOCK: Record<number, number> = {
+  421614: 0.25,
+  42161: 0.25,
+  84532: 2,
+  8453: 2,
+}
 
 export function useCountdown(targetBlock: number | null): number {
-  const { data: currentBlock } = useBlockNumber({ watch: true })
+  const chainId = useChainId()
+  const hasTarget = targetBlock != null && targetBlock > 0
+  const { data: currentBlock } = useBlockNumber({
+    watch: false,
+    query: {
+      enabled: hasTarget,
+      refetchInterval: hasTarget ? 4_000 : false,
+    },
+  })
   const [secondsLeft, setSecondsLeft] = useState(0)
 
   useEffect(() => {
@@ -14,8 +27,9 @@ export function useCountdown(targetBlock: number | null): number {
       return
     }
     const blocksLeft = Math.max(0, targetBlock - Number(currentBlock))
-    setSecondsLeft(blocksLeft * AVG_BLOCK_TIME_SEC)
-  }, [targetBlock, currentBlock])
+    const secPerBlock = SEC_PER_BLOCK[chainId] ?? 2
+    setSecondsLeft(Math.max(0, Math.ceil(blocksLeft * secPerBlock)))
+  }, [targetBlock, currentBlock, chainId])
 
   return secondsLeft
 }

@@ -7,7 +7,7 @@ import Button from '../ui/Button'
 import Input from '../ui/Input'
 import Select from '../ui/Select'
 import { Badge } from '../ui/Badge'
-import { useIntentSubmission } from '../../hooks/useIntentSubmission'
+import { useLegacyGhostLockIntentsSubmission } from '../../hooks/useIntentSubmission'
 import { useEpochInfo } from '../../hooks/useAuctionData'
 import { MARKETS } from '../../lib/config'
 import { formatNumber } from '../../lib/utils'
@@ -39,7 +39,7 @@ export default function IntentSubmissionForm({
   const { blockNumber, isLoading: isLoadingBlockNumber } = useSharedBlockNumber()
   
   const { data: epochInfo } = useEpochInfo()
-  const { submitIntent, isSubmitting, lastRequestId, lastTxHash, isConfirming, receipt } = useIntentSubmission()
+  const { submitIntent, isSubmitting, lastRequestId, lastTxHash, isConfirming, receipt } = useLegacyGhostLockIntentsSubmission()
   
   // Get explorer URL based on chain
   const getExplorerUrl = (txHash: string) => {

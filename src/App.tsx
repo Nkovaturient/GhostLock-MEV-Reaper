@@ -10,6 +10,7 @@ import TradePage from './pages/TradePage'
 import AuctionPage from './pages/AuctionPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import HolmeSwapPage from './holmeswap/HolmeSwapPage'
+import AdminExplorerPage from './pages/AdminExplorerPage'
 import '@rainbow-me/rainbowkit/styles.css'
 import RevenuePage from './pages/RevenuePage'
 import { useAutoEpochSeedRequest } from './hooks/useAutoEpochSeedRequest'
@@ -47,6 +48,7 @@ function AppContent() {
           <Route path="/trade" element={<TradePage />} />
           <Route path="/auctions" element={<AuctionPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/admin" element={<AdminExplorerPage />} />
           <Route path="/pricing" element={<RevenuePage />} />
         </Routes>
       </main>

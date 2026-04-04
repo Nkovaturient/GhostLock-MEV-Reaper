@@ -5,6 +5,7 @@ import { Badge } from '../ui/Badge'
 import { formatCurrency } from '../../lib/utils'
 import { useMEVGlobal, refreshMEVData } from '../../hooks/useMEVData'
 import React, { useState, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { useSharedBlockNumber } from '../../hooks/useSharedBlockNumber'
 
 export default function MEVAnalytics() {
@@ -139,6 +140,11 @@ export default function MEVAnalytics() {
           <h2 className="text-2xl font-bold text-white mb-2">MEV Protection Analytics</h2>
           <p className="text-ghost-300">
             Real-time insights from ZeroMEV API • Last updated: {new Date(mevData.lastUpdated).toLocaleTimeString()}
+          </p>
+          <p className="mt-2">
+            <Link to="/admin" className="text-sm text-primary-400 hover:underline">
+              Intent explorer
+            </Link>
           </p>
         </div>
         <button

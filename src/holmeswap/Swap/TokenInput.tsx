@@ -5,7 +5,7 @@ import { ChevronDown } from 'lucide-react'
 import { useAccount, useBalance } from 'wagmi'
 import { useChainId } from 'wagmi'
 
-import { useSwapStore, type TokenInfo } from '../stores/swapStore'
+import { useSwapStore, type TokenInfo, type TradeTab } from '../stores/swapStore'
 import { getTokenIcon } from '../assets/TokenIcons'
 import { TOKEN_LIST, getTokenAddress, isNativeToken } from '../contracts/tokens'
 import { cn } from '../../lib/utils'
@@ -52,6 +52,19 @@ function useTokenBalance(symbol: string, decimals: number) {
   return { rawBalance: data.value, formattedBalance: formatted, isLoading: false }
 }
 
+function rowLabelFor(tab: TradeTab, row: 'in' | 'out'): string {
+  if (row === 'in') {
+    if (tab === 'sell') return 'Sell'
+    if (tab === 'buy') return 'You pay'
+    if (tab === 'limit') return 'From'
+    return 'Pay'
+  }
+  if (tab === 'sell') return 'Buy'
+  if (tab === 'buy') return 'You receive'
+  if (tab === 'limit') return 'To'
+  return 'Receive'
+}
+
 interface TokenInputProps {
   type?:           'in' | 'out'
   readOnly?:      boolean
@@ -69,6 +82,7 @@ export default function TokenInput({ type = 'in', readOnly = false, onAmountChan
     bottom?: number
   } | null>(null)
 
+  const tradeTab    = useSwapStore(s => s.tradeTab)
   const tokenIn     = useSwapStore(s => s.tokenIn)
   const tokenOut    = useSwapStore(s => s.tokenOut)
   const amountIn    = useSwapStore(s => s.amountIn)
@@ -157,6 +171,7 @@ export default function TokenInput({ type = 'in', readOnly = false, onAmountChan
   }
 
   const balanceLabel = balLoading ? '…' : balance ?? '—'
+  const rowLabel = rowLabelFor(tradeTab, type)
 
   return (
     <div
@@ -170,6 +185,7 @@ export default function TokenInput({ type = 'in', readOnly = false, onAmountChan
         'overflow-visible'
       )}
     >
+      <p className="text-xs font-medium text-muted-foreground mb-2">{rowLabel}</p>
       <div className="flex items-center justify-between mb-3">
         <div ref={anchorRef} className="inline-flex">
           <motion.button

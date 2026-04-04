@@ -12,11 +12,15 @@ const arbitrumRpcUrls = arbitrumRpcUrl
       'https://arb1.arbitrum.io/rpc',
     ]
 
+// Prefer public RPCs in the browser: official rollup often returns duplicate
+// Access-Control-Allow-Origin (*,*) which breaks fetch(); it also rate-limits heavily.
+// Set VITE_ARBITRUM_SEPOLIA_RPC_URL (Alchemy/Infura) for production.
 const arbitrumSepoliaRpcUrls = arbitrumSepoliaRpcUrl
   ? [arbitrumSepoliaRpcUrl]
   : [
-      'https://sepolia-rollup.arbitrum.io/rpc',
+      'https://arbitrum-sepolia.publicnode.com',
       'https://rpc.ankr.com/arbitrum_sepolia',
+      'https://sepolia-rollup.arbitrum.io/rpc',
     ]
 
 const baseMainnetRpcUrls = baseMainnetRpcUrl
@@ -46,7 +50,7 @@ const arbitrumSepoliaChain = {
   rpcUrls: {
     default: {
       http: arbitrumSepoliaRpcUrls,
-      webSocket: ['wss://sepolia-rollup.arbitrum.io/ws'],
+      webSocket: [],
     },
   },
 }

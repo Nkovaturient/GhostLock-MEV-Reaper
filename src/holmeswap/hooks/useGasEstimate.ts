@@ -1,17 +1,16 @@
 /**
  * useGasEstimate.ts
  *
- * Estimates gas costs for GhostLock intent submission including:
- * - Blocklock encryption fee
- * - Bond amount (0.01 ETH)
- * - Total cost breakdown
+ * On-chain min ETH for submitIntentWithBond: blocklock fee + BOND_MINIMUM
+ * (matches GhostLockLiveness — not a flat 0.01 ETH).
  */
-import { useMemo } from 'react'
-import { useChainId } from 'wagmi'
-import { formatEther, parseEther } from 'viem'
+import { useEffect, useMemo, useState } from 'react'
+import { formatEther } from 'viem'
+import { usePublicClient, useChainId } from 'wagmi'
 import { useSwapStore } from '../stores/swapStore'
-import { AUCTION } from '../contracts/config'
+import { AUCTION, getAddresses, getMarketFromTokenPair } from '../contracts/config'
 import { useOraclePrice } from './useOraclePrice'
+import { getSubmitIntentMinValueWei, getEffectiveCallbackGasLimit } from '../lib/submitIntentMinValue'
 
 interface GasEstimate {
   blocklockFee: string
@@ -23,67 +22,103 @@ interface GasEstimate {
   isLoading: boolean
 }
 
-// Current ETH price in USD (fetched from Pyth in production)
-const ETH_PRICE_USD = 3500 // Placeholder - should come from oracle
-
 export function useGasEstimate(): GasEstimate {
+  const publicClient = usePublicClient()
   const chainId = useChainId()
-  const amountIn = useSwapStore(s => s.amountIn)
-  const tokenIn = useSwapStore(s => s.tokenIn)
+  const [feeWei, setFeeWei] = useState<bigint | null>(null)
+  const [bondWei, setBondWei] = useState<bigint | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    if (!publicClient) {
+      setIsLoading(false)
+      return
+    }
+    let cancelled = false
+    setIsLoading(true)
+    const addrs = getAddresses(chainId)
+    getEffectiveCallbackGasLimit(
+      publicClient,
+      addrs.GhostLockLiveness,
+      AUCTION.CALLBACK_GAS_LIMIT,
+    )
+      .then((cb) => getSubmitIntentMinValueWei(publicClient, addrs.GhostLockLiveness, cb))
+      .then(({ requestPrice, bondMinimum }) => {
+        if (cancelled) return
+        setFeeWei(requestPrice)
+        setBondWei(bondMinimum)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setFeeWei(null)
+        setBondWei(null)
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [publicClient, chainId])
 
   return useMemo(() => {
-    // Blocklock fee + bond from config
-    const submissionValue = parseEther(AUCTION.SUBMISSION_VALUE_ETH)
-    const blocklockFee = submissionValue * BigInt(20) / BigInt(100) // ~20% is fee
-    const bond = submissionValue - blocklockFee
+    if (feeWei == null || bondWei == null) {
+      return {
+        blocklockFee: '—',
+        bondAmount: '—',
+        totalCost: '—',
+        blocklockFeeEth: 0,
+        bondAmountEth: 0,
+        totalCostEth: 0,
+        isLoading,
+      }
+    }
 
-    const blocklockFeeEth = Number(formatEther(blocklockFee))
-    const bondAmountEth = Number(formatEther(bond))
+    const blocklockFeeEth = Number(formatEther(feeWei))
+    const bondAmountEth = Number(formatEther(bondWei))
     const totalCostEth = blocklockFeeEth + bondAmountEth
 
     return {
-      blocklockFee: `${blocklockFeeEth.toFixed(4)} ETH`,
+      blocklockFee: `${blocklockFeeEth.toFixed(6)} ETH`,
       bondAmount: `${bondAmountEth.toFixed(4)} ETH`,
-      totalCost: `${totalCostEth.toFixed(4)} ETH`,
+      totalCost: `${totalCostEth.toFixed(6)} ETH`,
       blocklockFeeEth,
       bondAmountEth,
       totalCostEth,
-      isLoading: false,
+      isLoading,
     }
-  }, [chainId])
+  }, [feeWei, bondWei, isLoading])
 }
 
 // Calculate MEV savings estimate based on trade size
 export function useMevSavingsEstimate(): { estimatedSavings: number; confidence: 'low' | 'medium' | 'high' } {
   const amountIn = useSwapStore(s => s.amountIn)
   const tokenIn = useSwapStore(s => s.tokenIn)
-  const { prices } = useOraclePrice();
+  const tokenOut = useSwapStore(s => s.tokenOut)
+  const { prices } = useOraclePrice()
 
   return useMemo(() => {
     const amount = parseFloat(amountIn) || 0
     if (amount <= 0) return { estimatedSavings: 0, confidence: 'low' }
 
-    // Estimate MEV extraction on public DEXs
-    // Typical sandwich attack: 0.1-0.5% of trade value
-    const mevRate = tokenIn.symbol === 'ETH' ? 0.003 : 0.0015 // 0.3% for ETH, 0.15% for others
+    const resolved = getMarketFromTokenPair(tokenIn.symbol, tokenOut.symbol)
+    const mevRate = resolved?.market.base.toUpperCase() === 'ETH' ? 0.003 : 0.0015
 
     let tradeValueUsd = 0
-    if (prices?.base?.usdValue) {
-      tradeValueUsd = amount * prices.base.usdValue
-    } else {
-      // Fallback using hardcoded ETH price
-      tradeValueUsd = amount * (tokenIn.symbol === 'ETH' ? 3500 : 1)
+    if (resolved && prices.isValid) {
+      if (resolved.intentSide === 'sell' && prices.base?.usdValue != null) {
+        tradeValueUsd = amount * prices.base.usdValue
+      } else if (resolved.intentSide === 'buy' && prices.quote?.usdValue != null) {
+        tradeValueUsd = amount * prices.quote.usdValue
+      }
     }
 
     const estimatedSavings = tradeValueUsd * mevRate
 
-    // Confidence based on trade size
     let confidence: 'low' | 'medium' | 'high' = 'medium'
     if (tradeValueUsd < 100) confidence = 'low'
     else if (tradeValueUsd > 10000) confidence = 'high'
 
     return { estimatedSavings, confidence }
-  }, [amountIn, tokenIn.symbol, prices])
+  }, [amountIn, tokenIn.symbol, tokenOut.symbol, prices])
 }
 
 // Format cost for display
@@ -93,8 +128,7 @@ export function formatCost(etherAmount: number): string {
   return `${etherAmount.toFixed(4)} ETH`
 }
 
-// Format USD value
-export function formatUsd(etherAmount: number, ethPrice: number = ETH_PRICE_USD): string {
-  const usd = etherAmount * ethPrice
+export function formatUsd(etherAmount: number, ethPriceUsd: number): string {
+  const usd = etherAmount * ethPriceUsd
   return `$${usd.toFixed(2)}`
 }

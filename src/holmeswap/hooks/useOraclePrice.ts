@@ -9,15 +9,13 @@
  *
  * Integrates with GhostLock PriceOracle contract validation.
  */
-import { useEffect, useMemo, useRef, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useCallback, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useChainId, usePublicClient } from 'wagmi'
-import { readContract } from '@wagmi/core'
-import { formatUnits } from 'viem'
 
 import { useSwapStore } from '../stores/swapStore'
-import { PRICE_ORACLE_ABI } from '../contracts/abi'
-import { getAddresses } from '../contracts/config'
+import { PriceOracleABI } from '../ABI/PriceOracleABI'
+import { getAddresses, getMarketFromTokenPair } from '../contracts/config'
 import { PYTH_PRICE_IDS, HERMES_BASE } from '../../lib/pyth-ids'
 
 // Refresh interval - 7 seconds as per spec
@@ -54,8 +52,10 @@ interface OraclePriceData {
 }
 
 interface TokenPairPrices {
+  /** Pyth legs for market.base and market.quote (USD-normalized). */
   base: OraclePriceData | null
   quote: OraclePriceData | null
+  /** Quote token per 1 base (e.g. USDC per ETH). Used for intents + swap math. */
   exchangeRate: number | null
   rate8Dec: bigint | null // Exchange rate normalized to 8 decimals
   isValid: boolean
@@ -132,12 +132,13 @@ async function fetchContractPrice(
   try {
     const addrs = getAddresses(chainId)
 
-    const result = await publicClient.readContract({
+    const raw = await publicClient.readContract({
       address: addrs.PriceOracle,
-      abi: PRICE_ORACLE_ABI,
+      abi: PriceOracleABI,
       functionName: 'getLatestPrice',
       args: [tokenAddress as `0x${string}`],
-    }) as {
+    })
+    const result = raw as unknown as {
       price: bigint
       confidence: bigint
       timestamp: bigint
@@ -195,14 +196,13 @@ interface UseOraclePriceReturn {
 export function useOraclePrice(): UseOraclePriceReturn {
   const tokenIn = useSwapStore(s => s.tokenIn)
   const tokenOut = useSwapStore(s => s.tokenOut)
-  const slippageBps = useSwapStore(s => s.slippageBps)
   const setSubmissionOraclePrice = useSwapStore(s => s.setSubmissionOraclePrice)
 
   const chainId = useChainId()
   const publicClient = usePublicClient()
   const queryClient = useQueryClient()
 
-  const [nextRefreshIn, setNextRefreshIn] = React.useState(7)
+  const [nextRefreshIn, setNextRefreshIn] = useState(7)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Countdown timer for refresh
@@ -226,11 +226,10 @@ export function useOraclePrice(): UseOraclePriceReturn {
   const { data, isLoading, dataUpdatedAt } = useQuery({
     queryKey: ['oracle-price', tokenIn.symbol, tokenOut.symbol, chainId],
     queryFn: async (): Promise<TokenPairPrices> => {
-      const baseSym = tokenIn.symbol.toUpperCase()
-      const quoteSym = tokenOut.symbol.toUpperCase()
+      const inU = tokenIn.symbol.toUpperCase()
+      const outU = tokenOut.symbol.toUpperCase()
 
-      // Same token - no conversion needed
-      if (baseSym === quoteSym) {
+      if (inU === outU) {
         return {
           base: null,
           quote: null,
@@ -241,17 +240,28 @@ export function useOraclePrice(): UseOraclePriceReturn {
         }
       }
 
-      // Fetch both prices in parallel
-      const [basePriceData, quotePriceData] = await Promise.all([
-        fetchPythPrice(getPythPriceId(tokenIn.symbol)),
-        fetchPythPrice(getPythPriceId(tokenOut.symbol)),
+      const resolved = getMarketFromTokenPair(tokenIn.symbol, tokenOut.symbol)
+      if (!resolved) {
+        return {
+          base: null,
+          quote: null,
+          exchangeRate: null,
+          rate8Dec: null,
+          isValid: false,
+          error: 'Unsupported token pair for this market',
+        }
+      }
+
+      const { market } = resolved
+      const [baseLeg, quoteLeg] = await Promise.all([
+        fetchPythPrice(getPythPriceId(market.base) as string),
+        fetchPythPrice(getPythPriceId(market.quote) as string),
       ])
 
-      // Validate we have both prices
-      if (!basePriceData || !quotePriceData) {
+      if (!baseLeg || !quoteLeg) {
         return {
-          base: basePriceData,
-          quote: quotePriceData,
+          base: baseLeg,
+          quote: quoteLeg,
           exchangeRate: null,
           rate8Dec: null,
           isValid: false,
@@ -259,11 +269,10 @@ export function useOraclePrice(): UseOraclePriceReturn {
         }
       }
 
-      // Check staleness
-      if (basePriceData.isStale || quotePriceData.isStale) {
+      if (baseLeg.isStale || quoteLeg.isStale) {
         return {
-          base: basePriceData,
-          quote: quotePriceData,
+          base: baseLeg,
+          quote: quoteLeg,
           exchangeRate: null,
           rate8Dec: null,
           isValid: false,
@@ -271,12 +280,11 @@ export function useOraclePrice(): UseOraclePriceReturn {
         }
       }
 
-      // Check confidence bands
-      if (basePriceData.confidenceBps > MAX_CONFIDENCE_BPS ||
-          quotePriceData.confidenceBps > MAX_CONFIDENCE_BPS) {
+      if (baseLeg.confidenceBps > MAX_CONFIDENCE_BPS ||
+          quoteLeg.confidenceBps > MAX_CONFIDENCE_BPS) {
         return {
-          base: basePriceData,
-          quote: quotePriceData,
+          base: baseLeg,
+          quote: quoteLeg,
           exchangeRate: null,
           rate8Dec: null,
           isValid: false,
@@ -284,20 +292,16 @@ export function useOraclePrice(): UseOraclePriceReturn {
         }
       }
 
-      // Calculate exchange rate: base / quote (both in USD, so ratio gives base/quote)
-      const rate = basePriceData.price / quotePriceData.price
+      /** Quote token per 1 base (e.g. USDC per ETH): USD_base / USD_quote */
+      const quotePerBase = baseLeg.price / quoteLeg.price
+      const rate8Dec = (baseLeg.rawPrice * BigInt(1e8)) / quoteLeg.rawPrice
 
-      // Calculate 8-decimal normalized rate for contract
-      // rate8Dec = (basePrice * 1e8) / quotePrice
-      const rate8Dec = (basePriceData.rawPrice * BigInt(1e8)) / quotePriceData.rawPrice
-
-      // Store oracle price for submission
-      setSubmissionOraclePrice(rate)
+      setSubmissionOraclePrice(quotePerBase)
 
       return {
-        base: basePriceData,
-        quote: quotePriceData,
-        exchangeRate: rate,
+        base: baseLeg,
+        quote: quoteLeg,
+        exchangeRate: quotePerBase,
         rate8Dec,
         isValid: true,
         error: null,
@@ -351,25 +355,46 @@ export function useSwapCalculation() {
       }
     }
 
-    // Calculate output amount
-    const outAmount = inNum * prices.exchangeRate
+    const resolved = getMarketFromTokenPair(tokenIn.symbol, tokenOut.symbol)
+    if (!resolved) {
+      return {
+        amountOut: '',
+        amountOutMin: '',
+        usdValueIn: null,
+        usdValueOut: null,
+        priceImpact: 0,
+      }
+    }
 
-    // Apply slippage to get minimum output
-    const slippageFactor = 1 - slippageBps / 10000
-    const outAmountMin = outAmount * slippageFactor
+    const quotePerBase = prices.exchangeRate
+    const outDecimals = tokenOut.decimals <= 6 ? tokenOut.decimals : 6
+    const slip = slippageBps / 10_000
 
-    // Calculate USD values
-    const usdValueIn = prices.base?.usdValue ? inNum * prices.base.usdValue : null
-    const usdValueOut = prices.quote?.usdValue ? outAmount * prices.quote.usdValue : null
+    let outAmount: number
+    if (resolved.intentSide === 'sell') {
+      outAmount = inNum * quotePerBase
+    } else {
+      outAmount = inNum / quotePerBase
+    }
+
+    const outAmountMin = outAmount * (1 - slip)
+
+    const inIsMarketBase = resolved.intentSide === 'sell'
+    const usdValueIn = inIsMarketBase
+      ? (prices.base?.usdValue != null ? inNum * prices.base.usdValue : null)
+      : (prices.quote?.usdValue != null ? inNum * prices.quote.usdValue : null)
+    const usdValueOut = inIsMarketBase
+      ? (prices.quote?.usdValue != null ? outAmount * prices.quote.usdValue : null)
+      : (prices.base?.usdValue != null ? outAmount * prices.base.usdValue : null)
 
     return {
-      amountOut: outAmount.toFixed(tokenOut.decimals <= 6 ? tokenOut.decimals : 6),
-      amountOutMin: outAmountMin.toFixed(tokenOut.decimals <= 6 ? tokenOut.decimals : 6),
+      amountOut: outAmount.toFixed(outDecimals),
+      amountOutMin: outAmountMin.toFixed(outDecimals),
       usdValueIn,
       usdValueOut,
-      priceImpact: 0.05, // 0.05% - batch auction has low price impact
+      priceImpact: 0.05,
     }
-  }, [amountIn, prices, slippageBps, tokenOut.decimals])
+  }, [amountIn, prices, slippageBps, tokenIn.symbol, tokenOut.symbol, tokenOut.decimals])
 }
 
 // Validate clearing price against oracle (matches contract logic)
@@ -391,5 +416,3 @@ export function validateClearingPrice(
     deviationBps,
   }
 }
-
-import React from 'react'
