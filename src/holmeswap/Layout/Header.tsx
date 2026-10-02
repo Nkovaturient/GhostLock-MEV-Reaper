@@ -5,16 +5,14 @@ import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useAccount, useSwitchChain } from 'wagmi'
 import { ChevronDown, Settings, Check, X } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import MascotIcon from '../assets/MascotIcon'
+import BrandLogo from '../../components/BrandLogo'
 import { useSwapStore } from '../stores/swapStore'
 
 // ─── Supported networks shown in switcher ────────────────────────────────────
 
 const NETWORKS = [
-  { id: 84532,  label: 'Base Sepolia',    short: 'BASE-S', badge: 'BS', color: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-500/15', border: 'border-yellow-400/30' },
-  { id: 8453,   label: 'Base Mainnet',    short: 'BASE',   badge: 'B',  color: 'text-blue-600 dark:text-blue-400',    bg: 'bg-blue-500/15',   border: 'border-blue-400/30'   },
-  { id: 42161,  label: 'Arbitrum One',    short: 'ARBONE', badge: 'A',  color: 'text-sky-600 dark:text-sky-400',      bg: 'bg-sky-500/15',    border: 'border-sky-400/30'    },
   { id: 421614, label: 'Arbitrum Sepolia', short: 'ARB-S', badge: 'AS', color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-500/15', border: 'border-purple-400/30' },
+  { id: 42161,  label: 'Arbitrum One',    short: 'ARBONE', badge: 'A',  color: 'text-sky-600 dark:text-sky-400',      bg: 'bg-sky-500/15',    border: 'border-sky-400/30'    },
 ]
 
 // ─── Slippage options ─────────────────────────────────────────────────────────
@@ -47,8 +45,9 @@ function HolmeNetworkSwitcher() {
         onClick={() => setOpen(o => !o)}
         disabled={isPending}
         className={cn(
-          'flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium',
-          'bg-card/90 border shadow-holme-soft hover:shadow-holme-card transition-all',
+          'flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-sm font-medium',
+          'bg-white/50 border border-white/55 backdrop-blur-md',
+          'shadow-[0_2px_8px_rgba(74,144,226,0.06)] hover:bg-white/65 transition-all',
           current.border, current.bg, current.color,
           isPending && 'opacity-60 cursor-wait'
         )}
@@ -140,9 +139,9 @@ function SlippageSettings() {
         type="button"
         onClick={() => setOpen(o => !o)}
         className={cn(
-          'p-2.5 rounded-full bg-card/90 border border-border/50',
-          'shadow-holme-soft hover:shadow-holme-card transition-all text-foreground',
-          open && 'ring-2 ring-primary/30'
+          'p-2 sm:p-2.5 rounded-full bg-white/50 border border-white/55 backdrop-blur-md',
+          'shadow-[0_2px_8px_rgba(74,144,226,0.06)] hover:bg-white/65 transition-all text-foreground',
+          open && 'ring-2 ring-primary/25'
         )}
         aria-label="Swap settings"
         whileHover={{ rotate: open ? 0 : 45 }}
@@ -304,8 +303,9 @@ function WalletButton() {
             type="button"
             onClick={openAccountModal}
             className={cn(
-              'flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium',
-              'bg-card/90 border border-border/50 shadow-holme-soft hover:shadow-holme-card transition-all',
+              'flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-sm font-medium',
+              'bg-white/50 border border-white/55 backdrop-blur-md',
+              'shadow-[0_2px_8px_rgba(74,144,226,0.06)] hover:bg-white/65 transition-all',
               'text-foreground hover:scale-[1.02]'
             )}
             whileTap={{ scale: 0.97 }}
@@ -339,23 +339,29 @@ function WalletButton() {
 
 export default function Header() {
   return (
-    <header className="sticky top-0 z-50 holme-glass-card border-b border-border/40 rounded-none">
-      <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-4 min-w-0">
-          <motion.div
-            className="flex items-center gap-3 cursor-pointer shrink-0"
+    <header className="relative z-40 shrink-0 px-3 sm:px-4 pt-3 pb-2">
+      <div
+        className={cn(
+          'container mx-auto flex items-center justify-between gap-3 px-3 sm:px-4 py-2 sm:py-2.5',
+          'rounded-2xl border border-white/45 bg-white/35 backdrop-blur-xl',
+          'shadow-[0_4px_24px_rgba(74,144,226,0.08)]',
+        )}
+      >
+        <Link to="/holmeswap" className="flex items-center gap-2.5 sm:gap-3 min-w-0 shrink-0 group">
+          <motion.span
+            className="flex items-center gap-2.5 sm:gap-3"
             whileHover={{ scale: 1.02 }}
             transition={{ type: 'spring', stiffness: 400, damping: 17 }}
           >
-            <MascotIcon className="w-10 h-10 flex-shrink-0" />
-            <span className="text-xl font-semibold text-foreground tracking-tight">
-              HolmeSwap
+            <BrandLogo />
+            <span className="text-lg sm:text-xl font-semibold text-foreground tracking-tight">
+              Holme<span className="text-primary/90">Swap</span>
             </span>
-          </motion.div>
-        </div>
+          </motion.span>
+        </Link>
 
         {/* Right side controls */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2.5">
           <HolmeNetworkSwitcher />
           <WalletButton />
           <SlippageSettings />

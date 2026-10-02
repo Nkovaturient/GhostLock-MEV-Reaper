@@ -46,10 +46,12 @@ export function computeIntentParamsFromOracle(input: IntentEncodeInput): Compute
   const slip = input.slippageBps / 10_000
 
   if (intentSide === 'sell') {
+    const baseAmountNum = parseFloat(input.amountIn)
+    if (!Number.isFinite(baseAmountNum) || baseAmountNum <= 0) return null
     const limitPriceNum = input.quotePerBase * (1 - slip)
     return {
       side: 1,
-      baseAmount: input.amountIn,
+      baseAmount: formatBaseAmountForParseUnits(baseAmountNum, market.baseDecimals),
       limitPrice: formatLimitForParseUnits(limitPriceNum, market.quoteDecimals),
       marketId: market.id,
     }

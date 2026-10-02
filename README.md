@@ -13,7 +13,7 @@ A stealth shield against MEV, encrypting trades and settling them fair.
 
 ## 🛡️ Overview
 
-GhostLock: MEV Reaper is a cutting-edge DeFi platform that significantly endeavours to protect traders from Maximal Extractable Value (MEV) attacks through a **3-layer defense strategy**: **ENCRYPT → RANDOMIZE → EQUALIZE**. Built on Base Sepolia and Arbitrum One, it leverages blocklock encryption, VRF-based ordering, and AI-optimized batch auctions to eliminate front-running, sandwich attacks, and price manipulations at each levels.
+**ENCRYPT → RANDOMIZE → EQUALIZE** on **Arbitrum Sepolia** (testnet) and **Arbitrum One** (mainnet-ready). HolmeSwap at `/holmeswap` submits encrypted intents to `GhostLockLiveness`. Self-hosted dcipher: [docs/DCIPHER-OPS.md](docs/DCIPHER-OPS.md).
 
 ![GhostLock Banner](https://github.com/user-attachments/assets/8b445ad2-000e-404b-afeb-6e77991f677a)
 
@@ -214,13 +214,16 @@ npm run server
 
 ## 📋 Smart Contract Deployment
 
-### **Base Sepolia (Testnet)**
+### **Arbitrum Sepolia (Testnet)**
 
-- [BaseSepolia Faucets](https://www.alchemy.com/faucets/base-sepolia)
-- [GHOSTLOCK_INTENTS](https://sepolia.basescan.org/address/0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C) - `0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C`
-- [BATCH_SETTLEMENT](https://sepolia.basescan.org/address/0x8aF0Ec5b9a22d02acdC0fb3ad75831fef3208706) - `0x8aF0Ec5b9a22d02acdC0fb3ad75831fef3208706`
-- [EPOCH_RNG](https://sepolia.basescan.org/address/0xA785F4B588013C9761b6B2Dff025e058C42cb798) - `0xA785F4B588013C9761b6B2Dff025e058C42cb798`
-- [MOCK_ETH](https://sepolia.basescan.org/address/0xE8901D9f2f262f4F09E30344aA8470eCEbc64CBD) - `0xE8901D9f2f262f4F09E30344aA8470eCEbc64CBD`
+- [Arbitrum Sepolia Faucet](https://www.alchemy.com/faucets/arbitrum-sepolia)
+- [PriceOracle](https://sepolia.arbiscan.io/address/0x86c4023741467c3179683ed152471921DC2D48BC) - `0x86c4023741467c3179683ed152471921DC2D48BC`
+- [SolverRegistry](https://sepolia.arbiscan.io/address/0x3302E3d04d166C6D23E5B09a29a8eE3d2C7Baf98) - `0x3302E3d04d166C6D23E5B09a29a8eE3d2C7Baf98`
+- [DrandBeacon](https://sepolia.arbiscan.io/address/0x74FBA5163505e43634F366c52C92824C23027076) - `0x74FBA5163505e43634F366c52C92824C23027076`
+- [GhostLockEpochRNG](https://sepolia.arbiscan.io/address/0x73A35514Ab9405381A323c513220e20ACb9d7c30) - `0x73A35514Ab9405381A323c513220e20ACb9d7c30`
+- [GhostLockLiveness](https://sepolia.arbiscan.io/address/0x9c3772c9B2E8ae8A074aa9Fc8Aaa4943e0ffC983) - `0x9c3772c9B2E8ae8A074aa9Fc8Aaa4943e0ffC983`
+- [BatchSettlement](https://sepolia.arbiscan.io/address/0x926349E53527f690E25CF9C5d60e8791985aD14E) - `0x926349E53527f690E25CF9C5d60e8791985aD14E`
+- [SolverBoard](https://sepolia.arbiscan.io/address/0xB1A20FFFf4E4e15c0735fc0a79ad8BB8F3909916) - `0xB1A20FFFf4E4e15c0735fc0a79ad8BB8F3909916`
 
 ### **Arbitrum One (Mainnet)**
 
@@ -233,14 +236,6 @@ npm run server
 - Batch auctions with uniform pricing - Solver Competiton board
 - **Liveness guarantees** → Bond + slashing for missed reveals, fallback threshold revealers, and permissionless settlement calls so no one can grief the auction.
 <!-- - **Privacy hardening** → Add ciphertext(intent) padding, dummy intents, and batch-only publication so metadata leakage doesn’t kill the whole “encrypted” vibe. -->
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a PR!
 
 
 <!--
@@ -259,5 +254,3 @@ npm run server
 - [Randomness Protocol](https://github.com/randa-mu/randomness-solidity) for VRF implementation
 - [Base](https://base.org) + Arbitrum for the underlying blockchain infrastructure
 - [Drand](https://drand.love) for distributed randomness beacon
-
-🧑‍🚀

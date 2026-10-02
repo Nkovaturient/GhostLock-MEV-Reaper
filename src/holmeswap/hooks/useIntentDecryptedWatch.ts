@@ -2,11 +2,10 @@ import { useChainId, useWatchContractEvent } from 'wagmi'
 import { useSwapStore } from '../stores/swapStore'
 import { GhostLockLivenessABI } from '../ABI/GhostLockLiveness'
 import { getAddresses } from '../contracts/config'
+import { requestIdsEqual } from '../lib/requestId'
 
 /**
- * When blocklock delivers the key, GhostLockLiveness emits IntentDecrypted.
- * Advancing on this event avoids relying only on isReady refetch (see useIntentLivenessFollowup).
- * Also captures the transactionHash for the reveal transaction.
+ * When GhostLockLiveness emits IntentDecrypted, advance to batch ordering (step 3).
  */
 export function useIntentDecryptedWatch() {
   const chainId = useChainId()
@@ -19,16 +18,13 @@ export function useIntentDecryptedWatch() {
   const addrs = getAddresses(chainId)
   const enabled =
     lastRequestId != null &&
-    intentStatus === 'locked' &&
+    (intentStatus === 'locked' || intentStatus === 'ordering') &&
     Boolean(addrs.GhostLockLiveness)
 
   useWatchContractEvent({
     address: addrs.GhostLockLiveness,
     abi: GhostLockLivenessABI,
     eventName: 'IntentDecrypted',
-    ...(enabled && lastRequestId != null
-      ? { args: { requestId: BigInt(lastRequestId) } as const }
-      : {}),
     enabled,
     onLogs: (logs) => {
       const rid = lastRequestId
@@ -36,16 +32,14 @@ export function useIntentDecryptedWatch() {
       for (const log of logs) {
         const got = (log as { args?: { requestId?: bigint } }).args?.requestId
         const txHash = (log as { transactionHash?: `0x${string}` }).transactionHash
-        if (got != null && Number(got) === rid) {
-          // Capture the reveal transaction hash
-          if (txHash) {
-            setRevealTxHash(txHash)
-          }
-          setIntentStatus('ordering')
-          setStep(4)
-          setTimeout(() => setIntentStatus('competing'), 2_000)
-          return
-        }
+        if (!requestIdsEqual(got, rid)) continue
+        // #region agent log
+        fetch('http://127.0.0.1:7863/ingest/1c9654de-6579-4cb1-ad7e-6ea69c8510bd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6912e8'},body:JSON.stringify({sessionId:'6912e8',hypothesisId:'H2',location:'useIntentDecryptedWatch.ts:onLogs',message:'IntentDecrypted matched',data:{rid,got:got?.toString()},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        if (txHash) setRevealTxHash(txHash)
+        setIntentStatus('ordering')
+        setStep(3)
+        return
       }
     },
   })

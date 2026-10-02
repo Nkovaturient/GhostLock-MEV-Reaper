@@ -9,6 +9,7 @@ import { useChainId, useReadContract } from 'wagmi'
 import { useSwapStore } from '../stores/swapStore'
 import { GhostLockLivenessABI } from '../ABI/GhostLockLiveness'
 import { getAddresses } from '../contracts/config'
+import { requestIdToBigInt } from '../lib/requestId'
 
 const REFETCH_INTERVAL = 10_000 // 10 seconds
 
@@ -28,11 +29,11 @@ export function useIntentReady() {
     address: addrs.GhostLockLiveness,
     abi: GhostLockLivenessABI,
     functionName: 'isReady',
-    args: enabled && lastRequestId != null ? [BigInt(lastRequestId)] : undefined,
+    args: enabled && lastRequestId != null ? [requestIdToBigInt(lastRequestId)] : undefined,
     query: {
       enabled,
-      refetchInterval: REFETCH_INTERVAL,
-      staleTime: REFETCH_INTERVAL / 2,
+      refetchInterval: false,
+      staleTime: 30_000,
     },
   })
 

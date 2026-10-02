@@ -452,23 +452,27 @@ export default function DocsPage() {
                   <CardContent>
                     <div className="bg-ghost-900 rounded-lg p-4 overflow-x-auto">
                       <pre className="text-sm text-ghost-300">
-                        <code>{`// Submit encrypted trading intent
-import { IntentService } from '../lib/intent-service'
+                        <code>{`// HolmeSwap: tlock encrypt + submit to GhostLockLiveness
+import { encryptIntentTlock, unlockRoundForBlock } from '../lib/tlock-service'
 
-const intentService = new IntentService(signer, chainId)
-
-const intent = {
-  market: 'ETH/USDC',
+const unlockBlock = currentBlock + 100
+const unlockRound = unlockRoundForBlock(unlockBlock, currentBlock)
+const { ciphertext } = await encryptIntentTlock({
+  user: address,
   side: 'buy',
   amount: '1.0',
   limitPrice: '3120.50',
   slippageBps: 50,
-  targetBlock: currentBlock + 20
-}
+  marketId: 0,
+  epoch: Math.floor(unlockBlock / 100),
+  market: 'ETH/USDC',
+}, unlockRound)
 
-const payload = { ...intent, user: await signer.getAddress(), epoch: IntentService.getTargetEpoch(targetBlock) }
-const encrypted = await intentService.encryptIntent(payload, targetBlock)
-const tx = await contract.submitIntent(encrypted)`}</code>
+await liveness.submitTlockIntentWithBond(
+  unlockRound,
+  stringToHex(ciphertext),
+  { value: bondWei },
+)`}</code>
                       </pre>
                     </div>
                   </CardContent>

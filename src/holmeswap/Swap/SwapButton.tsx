@@ -1,7 +1,7 @@
 import React from 'react'
 import { motion } from 'framer-motion'
 import { Wallet } from 'lucide-react'
-import { useSwapStore } from '../stores/swapStore'
+import { useSwapStore, type TradeTab } from '../stores/swapStore'
 import { cn } from '../../lib/utils'
 
 interface SwapButtonProps {
@@ -21,16 +21,24 @@ const STATUS_LABELS: Record<string, string> = {
   error:      'Retry',
 }
 
+const TAB_ACTION_LABELS: Record<TradeTab, string> = {
+  swap:  'Swap',
+  buy:   'Buy',
+  sell:  'Sell',
+  limit: 'Limit Swap',
+}
+
 export default function SwapButton({ disabled = false, loading = false, onSubmit, isConnected = false }: SwapButtonProps) {
   const amountIn     = useSwapStore(s => s.amountIn)
   const intentStatus = useSwapStore(s => s.intentStatus)
+  const tradeTab     = useSwapStore(s => s.tradeTab)
 
   const hasAmount = amountIn && parseFloat(amountIn) > 0
   const isActive  = hasAmount && onSubmit && !disabled && isConnected
 
   const label = !isConnected
     ? 'Connect Wallet'
-    : STATUS_LABELS[intentStatus] ?? 'Submit Encrypted Intent'
+    : STATUS_LABELS[intentStatus] ?? TAB_ACTION_LABELS[tradeTab]
 
   const isSettled = intentStatus === 'settled'
 

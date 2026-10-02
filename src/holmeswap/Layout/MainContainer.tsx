@@ -1,29 +1,14 @@
 import React from 'react'
 
 interface MainContainerProps {
-  left: React.ReactNode
-  right: React.ReactNode
-  bottom: React.ReactNode
+  children: React.ReactNode
 }
 
-export default function MainContainer({ left, right, bottom }: MainContainerProps) {
+export default function MainContainer({ children }: MainContainerProps) {
   return (
-    <main className="container mx-auto px-4 py-8">
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr,1.1fr] gap-6 lg:gap-8 max-w-6xl mx-auto">
-        {/* Left column - Swap card */}
-        <div className="flex flex-col gap-6">
-          {left}
-          
-          {/* Bottom status cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {bottom}
-          </div>
-        </div>
-
-        {/* Right column - Timeline */}
-        <div className="lg:pl-4">
-          {right}
-        </div>
+    <main className="container mx-auto flex min-h-full w-full items-center justify-center px-4 py-4 sm:px-6 sm:py-6">
+      <div className="flex w-full justify-center py-1 sm:py-2">
+        {children}
       </div>
     </main>
   )

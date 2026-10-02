@@ -3,25 +3,17 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, Wifi, WifiOff, Check } from 'lucide-react'
 import { useAccount, useSwitchChain } from 'wagmi'
-import { baseSepolia, base, arbitrum, arbitrumSepolia } from 'wagmi/chains'
+import { arbitrum, arbitrumSepolia } from 'wagmi/chains'
 import { cn } from '../../lib/utils'
 
 const networks = [
   {
-    chain: baseSepolia,
-    name: 'Base Sepolia',
+    chain: arbitrumSepolia,
+    name: 'Arbitrum Sepolia',
     description: 'Testnet',
-    color: 'text-yellow-400',
-    bgColor: 'bg-yellow-500/20',
-    borderColor: 'border-yellow-500/30'
-  },
-  {
-    chain: base,
-    name: 'Base Mainnet',
-    description: 'Mainnet',
-    color: 'text-green-400',
-    bgColor: 'bg-green-500/20',
-    borderColor: 'border-green-500/30'
+    color: 'text-blue-400',
+    bgColor: 'bg-blue-500/20',
+    borderColor: 'border-blue-500/30',
   },
   {
     chain: arbitrum,
@@ -29,16 +21,8 @@ const networks = [
     description: 'Mainnet',
     color: 'text-red-400',
     bgColor: 'bg-red-500/20',
-    borderColor: 'border-red-500/30'
+    borderColor: 'border-red-500/30',
   },
-  {
-    chain: arbitrumSepolia,
-    name: 'Arbitrum Sepolia',
-    description: 'Testnet',
-    color: 'text-blue-400',
-    bgColor: 'bg-blue-500/20',
-    borderColor: 'border-blue-500/30'
-  }
 ]
 
 export default function NetworkSwitcher() {
@@ -53,7 +37,7 @@ export default function NetworkSwitcher() {
       setIsOpen(false)
       return
     }
-    
+
     try {
       await switchChain({ chainId: targetChainId })
       setIsOpen(false)
@@ -105,10 +89,10 @@ export default function NetworkSwitcher() {
               <div className="text-xs text-ghost-400 px-3 py-2 font-medium uppercase tracking-wider">
                 Switch Network
               </div>
-              
+
               {networks.map((network) => {
                 const isActive = chainId === network.chain.id
-                
+
                 return (
                   <button
                     key={network.chain.id}
@@ -116,7 +100,7 @@ export default function NetworkSwitcher() {
                     disabled={isActive || isPending}
                     className={cn(
                       'w-full flex items-center justify-between p-3 rounded-lg text-left transition-all duration-200',
-                      isActive 
+                      isActive
                         ? `${network.bgColor} ${network.borderColor} border`
                         : 'hover:bg-ghost-800 text-ghost-300 hover:text-white',
                       (isActive || isPending) && 'cursor-not-allowed'
@@ -139,7 +123,7 @@ export default function NetworkSwitcher() {
                         </div>
                       </div>
                     </div>
-                    
+
                     {isActive && (
                       <Check className="w-4 h-4 text-primary-400" />
                     )}
@@ -147,7 +131,7 @@ export default function NetworkSwitcher() {
                 )
               })}
             </div>
-            
+
             <div className="border-t border-white/10 p-3">
               <div className="text-xs text-ghost-400 space-y-1">
                 <div className="flex justify-between">
@@ -170,4 +154,3 @@ export default function NetworkSwitcher() {
     </div>
   )
 }
-

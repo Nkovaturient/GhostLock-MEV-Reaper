@@ -1,5 +1,9 @@
 /**
- * solver.js — GhostLock/HolmeSwap SolverBoard orchestrator
+ * solver.js — GhostLock/HolmeSwap SolverBoard orchestrator (canonical solver)
+ *
+ * This module replaces the standalone solver-node prototype. It runs inside the
+ * Express server, owns the SolverBoard keeper flow (register value → bid → select
+ * winner → execute), and handles drand epoch seeding plus optional Express Relay.
  *
  * Flow per batch (EQUALIZE layer via SolverBoard):
  *   1. Scan for published batches (BatchPublished events)
@@ -63,6 +67,7 @@ class SolverService {
       console.warn('[solver] No SOLVER_PRIVATE_KEY — read-only mode')
     }
     await this._verifyContracts()
+    await this._ensureSolverRegistered()
     console.log('[solver] Service initialized')
   }
 
@@ -200,6 +205,11 @@ class SolverService {
     const totalSurplus  = this._computeTotalSurplus(realIntents, priceResult.clearingPrice)
     const batchKey      = `${marketId}-${epoch}`
 
+    if (totalSurplus <= 0n) {
+      console.log(`[solver] Batch ${batchId}: insufficient surplus, skipping bid`)
+      return
+    }
+
     if (CONFIG.EXPRESS_RELAY.ENABLED) {
       const settled = await this._tryExpressRelay(batchKey, realIntents, epoch, marketId, priceResult.clearingPrice)
       if (settled) {
@@ -225,6 +235,12 @@ class SolverService {
       db.upsertSettlement(batchKey, epoch, marketId, intents.map(i => i.requestId), 'solving')
 
       await registerBatchValueTx(this.signer, BigInt(batchId), batchValue)
+
+      const biddingOpen = await this._isBiddingOpen(batchId)
+      if (!biddingOpen) {
+        console.warn(`[solver] Batch ${batchId}: bidding window closed, skipping bid`)
+        return
+      }
 
       const routeHash = ethers.keccak256(ethers.toUtf8Bytes(''))
       await submitBidTx(this.signer, BigInt(batchId), totalSurplus, routeHash)
@@ -264,6 +280,46 @@ class SolverService {
     } catch {
       return fallback
     }
+  }
+
+  async _isBiddingOpen(batchId) {
+    try {
+      const board = new ethers.Contract(CONFIG.CONTRACTS.SOLVER_BOARD, ABIS.SOLVER_BOARD_ABI, this.provider)
+      return await board.isBiddingOpen(BigInt(batchId))
+    } catch {
+      return false
+    }
+  }
+
+  async _ensureSolverRegistered() {
+    if (!this.signer) return
+
+    const registry = new ethers.Contract(
+      CONFIG.CONTRACTS.SOLVER_REGISTRY,
+      ABIS.SOLVER_REGISTRY_ABI,
+      this.signer
+    )
+    const address = await this.signer.getAddress()
+    const solver = await registry.solvers(address)
+    if (solver.isActive) {
+      console.log(`[solver] Registered in SolverRegistry (bond=${ethers.formatEther(solver.bondAmount)} ETH)`)
+      return
+    }
+
+    const minBond = await registry.MIN_BOND()
+    const balance = await this.provider.getBalance(address)
+    if (balance < minBond) {
+      console.warn(
+        `[solver] Not registered — need ${ethers.formatEther(minBond)} ETH bond; wallet has ${ethers.formatEther(balance)} ETH. Run: node scripts/register-solver.js`
+      )
+      return
+    }
+
+    const endpoint = process.env.SOLVER_ENDPOINT_URL || 'http://localhost:4800/api/auctions/solver/status'
+    const tx = await registry.registerSolver(endpoint, { value: minBond })
+    console.log(`[solver] registerSolver tx=${tx.hash}`)
+    await tx.wait()
+    console.log('[solver] Registered in SolverRegistry')
   }
 
   async _fetchIntentsForBatch(marketId, epoch) {
@@ -363,7 +419,7 @@ class SolverService {
       if (seed && seed !== ZERO_SEED) return seed
 
       if (!this.requestedEpochs.has(epoch)) {
-        await this._requestEpochSeed(epoch)
+        await this._seedEpochFromDrand(epoch)
         this.requestedEpochs.add(epoch)
       }
 
@@ -387,8 +443,8 @@ class SolverService {
     }
   }
 
-  async _requestEpochSeed(epoch) {
-    if (!this.signer) throw new Error('No signer — cannot request epoch seed')
+  async _seedEpochFromDrand(epoch) {
+    if (!this.signer) throw new Error('No signer — cannot seed epoch')
 
     const rng = new ethers.Contract(CONFIG.CONTRACTS.EPOCH_RNG, ABIS.EPOCH_RNG_ABI, this.signer)
 
@@ -403,18 +459,22 @@ class SolverService {
     const currentBlock = await this.provider.getBlockNumber()
     const currentEpoch = Math.floor(currentBlock / CONFIG.AUCTION.EPOCH_DURATION_BLOCKS)
     if (epoch > currentEpoch + 1) {
-      console.warn(`[solver] Cannot request seed for future epoch ${epoch}`)
+      console.warn(`[solver] Cannot seed future epoch ${epoch}`)
       return
     }
 
-    const tx = await rng.requestEpochSeed(epoch, CONFIG.SOLVER.EPOCH_SEED_GAS_LIMIT, {
-      value:                ethers.parseEther('0.001'),
+    const round = await rng.roundForEpoch(epoch)
+    const drand = await import('../../shared/drand.js')
+    const beacon = await drand.fetchBeacon(Number(round), drand.DRAND_EVMNET)
+    const { x, y } = drand.signatureToG1(beacon.signature)
+
+    const tx = await rng.seedEpochWithSignature(epoch, x, y, {
       maxFeePerGas:         ethers.parseUnits('0.2', 'gwei'),
       maxPriorityFeePerGas: ethers.parseUnits('0.05', 'gwei'),
     })
-    console.log(`[solver] requestEpochSeed(${epoch}): ${tx.hash}`)
+    console.log(`[solver] seedEpochWithSignature(${epoch}, drand round ${round}): ${tx.hash}`)
     const receipt = await tx.wait()
-    if (receipt.status === 0) throw new Error(`EpochRNG tx reverted for epoch ${epoch}`)
+    if (receipt.status === 0) throw new Error(`EpochRNG seed tx reverted for epoch ${epoch}`)
   }
 
   async _waitForEpochSeed(epoch, maxWaitMs = 300_000, pollMs = 10_000) {
@@ -431,7 +491,7 @@ class SolverService {
   _compareBySeed(seed, a, b) {
     const hash = (intent) => ethers.keccak256(ethers.concat([
       ethers.getBytes(seed),
-      ethers.zeroPadValue(ethers.toBeHex(intent.requestId), 32),
+      ethers.zeroPadValue(ethers.toBeHex(BigInt(intent.requestId)), 32),
       ethers.zeroPadValue(ethers.getBytes(intent.user), 32),
     ]))
     const ha = hash(a), hb = hash(b)
@@ -473,6 +533,18 @@ class SolverService {
     this.epochRNGContract = new ethers.Contract(
       CONFIG.CONTRACTS.EPOCH_RNG, ABIS.EPOCH_RNG_ABI, this.provider
     )
+  }
+
+  async performHealthCheck() {
+    const block = await this.provider.getBlockNumber()
+    const balance = this.signer
+      ? await this.provider.getBalance(await this.signer.getAddress())
+      : 0n
+    const balEth = ethers.formatEther(balance)
+    console.log(`[health] block=${block} balance=${balEth} ETH`)
+    if (this.signer && balance < ethers.parseEther('0.01')) {
+      console.warn('[health] Solver balance low — replenish soon')
+    }
   }
 
   getStatus() {

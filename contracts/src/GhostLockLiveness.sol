@@ -52,17 +52,28 @@ contract GhostLockLiveness is AbstractBlocklockReceiver, ReentrancyGuard {
     struct Intent {
         address requestedBy;
         uint32 encryptedAt; // block.timestamp at submission
-        uint32 unlockBlock; // blocklock target
-        TypesLib.Ciphertext ct; // encrypted payload — stored for forceReveal
+        uint32 unlockBlock; // blocklock target (0 for tlock)
+        TypesLib.Ciphertext ct; // blocklock ciphertext — stored for forceReveal
+        bytes tlockCiphertext; // opaque tlock blob (drand quicknet)
+        bool isTlock;
+        uint32 unlockRound; // drand quicknet round (0 for blocklock)
         bool ready; // decryption complete
         bool forced; // decrypted via forceReveal, not oracle
         bytes32 decryptedHash; // keccak256 of plaintext (for on-chain verification)
         uint256 bond; // ETH bonded at submission
-        uint256 revealDeadline; // block number: oracle must deliver by here
-        uint256 slashDeadline; // block number: after this, bond is slashable
+        uint256 revealDeadline; // blocklock: block number; tlock: unix timestamp
+        uint256 slashDeadline; // blocklock: block number; tlock: unix timestamp
     }
 
     mapping(uint256 => Intent) public intents; // requestId => Intent
+
+    /// @dev tlock request IDs start at 2^128 to avoid collision with blocklock IDs.
+    uint256 public constant TLOCK_REQUEST_ID_BASE = 1 << 128;
+    uint256 public nextTlockRequestId = TLOCK_REQUEST_ID_BASE;
+
+    /// drand quicknet (3s period, genesis 1692803367)
+    uint256 public constant DRAND_QUICKNET_GENESIS = 1692803367;
+    uint256 public constant DRAND_QUICKNET_PERIOD = 3;
 
     // FIX [1]: per-user request tracking
     mapping(address => uint256[]) public userRequestIds; // user => [requestId, ...]
@@ -120,6 +131,10 @@ contract GhostLockLiveness is AbstractBlocklockReceiver, ReentrancyGuard {
     error SlashNotAllowed(uint256 requestId);
     error NoBond(uint256 requestId);
     error OnlyAdmin();
+    error NotTlockIntent(uint256 requestId);
+    error NotBlocklockIntent(uint256 requestId);
+    error RevealTooEarly(uint256 requestId, uint256 currentTime, uint256 unlockTime);
+    error PlaintextHashMismatch(uint256 requestId);
 
     // ─── modifiers ────────────────────────────────────────────────────────────
     modifier onlyAdmin() {
@@ -169,6 +184,85 @@ contract GhostLockLiveness is AbstractBlocklockReceiver, ReentrancyGuard {
         lastRequestIdByUser[msg.sender] = requestId;
 
         emit IntentSubmitted(requestId, msg.sender, unlockBlock, bondAmt);
+    }
+
+    /**
+     * @notice Submit a drand quicknet tlock-encrypted intent. msg.value is the bond only (no blocklock fee).
+     * @param unlockRound      drand quicknet round at which decryption is possible.
+     * @param tlockCiphertext  Opaque armored ciphertext from tlock-js.
+     * @return requestId       ID in the tlock namespace (>= TLOCK_REQUEST_ID_BASE).
+     */
+    function submitTlockIntentWithBond(uint32 unlockRound, bytes calldata tlockCiphertext)
+        external
+        payable
+        nonReentrant
+        returns (uint256 requestId)
+    {
+        if (msg.value < BOND_MINIMUM) revert BondTooSmall(msg.value, BOND_MINIMUM);
+        require(unlockRound > 0, "zero round");
+        require(tlockCiphertext.length > 0, "empty ciphertext");
+
+        requestId = nextTlockRequestId++;
+        uint256 unlockTime = unlockRoundTime(unlockRound);
+
+        Intent storage it = intents[requestId];
+        it.requestedBy = msg.sender;
+        it.encryptedAt = uint32(block.timestamp);
+        it.isTlock = true;
+        it.unlockRound = unlockRound;
+        it.tlockCiphertext = tlockCiphertext;
+        it.bond = msg.value;
+        it.revealDeadline = unlockTime;
+        it.slashDeadline = unlockTime + slashBlocks * DRAND_QUICKNET_PERIOD;
+
+        userRequestIds[msg.sender].push(requestId);
+        lastRequestIdByUser[msg.sender] = requestId;
+
+        emit IntentSubmitted(requestId, msg.sender, unlockRound, msg.value);
+    }
+
+    /**
+     * @notice Permissionless reveal after the drand quicknet round is due.
+     *         Caller supplies plaintext; contract stores hash and emits IntentDecrypted.
+     */
+    function revealTlockPlaintext(uint256 requestId, bytes calldata plaintext) external nonReentrant {
+        Intent storage it = intents[requestId];
+        if (it.requestedBy == address(0)) revert UnknownRequest(requestId);
+        if (!it.isTlock) revert NotTlockIntent(requestId);
+        if (it.ready) revert AlreadyReady(requestId);
+
+        uint256 unlockTime = unlockRoundTime(it.unlockRound);
+        if (block.timestamp < unlockTime) {
+            revert RevealTooEarly(requestId, block.timestamp, unlockTime);
+        }
+
+        bytes32 hash = keccak256(plaintext);
+        if (it.decryptedHash != bytes32(0) && it.decryptedHash != hash) {
+            revert PlaintextHashMismatch(requestId);
+        }
+
+        (,,,, uint8 marketId, uint256 epoch) = _decodeIntent(plaintext);
+
+        it.decryptedHash = hash;
+        it.ready = true;
+
+        uint256 bond = it.bond;
+        it.bond = 0;
+        if (bond > 0) {
+            (bool ok,) = it.requestedBy.call{value: bond}("");
+            if (!ok) {
+                pendingRefunds[it.requestedBy] += bond;
+                emit PendingRefundCredited(it.requestedBy, bond);
+            }
+        }
+
+        emit IntentDecrypted(requestId, marketId, epoch, false, msg.sender, plaintext);
+    }
+
+    /// @dev Unix timestamp when drand quicknet `round` is emitted.
+    function unlockRoundTime(uint32 round) public pure returns (uint256) {
+        if (round == 0) return 0;
+        return DRAND_QUICKNET_GENESIS + uint256(round - 1) * DRAND_QUICKNET_PERIOD;
     }
 
     /// @dev Pays only the quoted fee to blocklock; keeps bond on this contract.
@@ -226,6 +320,7 @@ contract GhostLockLiveness is AbstractBlocklockReceiver, ReentrancyGuard {
     function forceReveal(uint256 requestId, bytes calldata decryptionKey) external nonReentrant {
         Intent storage it = intents[requestId];
         if (it.requestedBy == address(0)) revert UnknownRequest(requestId);
+        if (it.isTlock) revert NotBlocklockIntent(requestId);
         if (it.ready) revert AlreadyReady(requestId);
         if (block.number < it.revealDeadline) {
             revert RevealWindowNotOpen(requestId, block.number, it.revealDeadline);
@@ -278,7 +373,11 @@ contract GhostLockLiveness is AbstractBlocklockReceiver, ReentrancyGuard {
         Intent storage it = intents[requestId];
         if (it.requestedBy == address(0)) revert UnknownRequest(requestId);
         if (it.ready) revert AlreadyReady(requestId);
-        if (block.number < it.slashDeadline) revert SlashNotAllowed(requestId);
+        if (it.isTlock) {
+            if (block.timestamp < it.slashDeadline) revert SlashNotAllowed(requestId);
+        } else if (block.number < it.slashDeadline) {
+            revert SlashNotAllowed(requestId);
+        }
 
         uint256 bond = it.bond;
         if (bond == 0) revert NoBond(requestId); // FIX [6]

@@ -6,6 +6,7 @@ import "../lib/forge-std/src/console.sol";
 
 import "../src/PriceOracle.sol";
 import "../src/SolverRegistry.sol";
+import "../src/DrandBeacon.sol";
 import "../src/EpochRNG.sol";
 import "../src/GhostLockLiveness.sol";
 import "../src/BatchSettlement.sol";
@@ -54,6 +55,7 @@ contract Deploy is Script {
     GhostLockLiveness liveness;
     GhostLockBatchSettlement settlement;
     SolverBoard board;
+    DrandBeacon beacon;
 
     function run() external {
         // ── load config ─────────────────────────────────────────────────────
@@ -62,8 +64,12 @@ contract Deploy is Script {
 
         address pyth = vm.envAddress("PYTH_ADDRESS");
         address blocklockSender = vm.envAddress("BLOCKLOCK_SENDER_ARB_SEPOLIA");
-        address randomnessSender = vm.envAddress("RANDOMNESS_SENDER_ARB_SEPOLIA");
         address treasury = vm.envAddress("TREASURY");
+
+        // Epoch/round anchor for the drand-backed EpochRNG.
+        uint256 epochAnchor = vm.envUint("DRAND_EPOCH_ANCHOR");
+        uint64 roundAnchor = uint64(vm.envUint("DRAND_ROUND_ANCHOR"));
+        uint64 roundsPerEpoch = uint64(vm.envUint("DRAND_ROUNDS_PER_EPOCH"));
 
         address tokenBase = vm.envAddress("TOKEN_BASE");
         address tokenQuote = vm.envAddress("TOKEN_QUOTE");
@@ -80,7 +86,9 @@ contract Deploy is Script {
         require(deployer.balance >= 0.1 ether, "DEPLOYER: insufficient ETH for gas");
         require(pyth != address(0), "PYTH_ADDRESS not set");
         require(blocklockSender != address(0), "BLOCKLOCK_SENDER not set");
-        require(randomnessSender != address(0), "RANDOMNESS_SENDER not set");
+        require(epochAnchor != 0, "DRAND_EPOCH_ANCHOR not set");
+        require(roundAnchor != 0, "DRAND_ROUND_ANCHOR not set");
+        require(roundsPerEpoch != 0, "DRAND_ROUNDS_PER_EPOCH not set");
         require(tokenBase != address(0), "TOKEN_BASE not set");
         require(tokenQuote != address(0), "TOKEN_QUOTE not set");
         require(tokenBase != tokenQuote, "TOKEN_BASE == TOKEN_QUOTE");
@@ -108,9 +116,14 @@ contract Deploy is Script {
         registry = new SolverRegistry(deployer);
         console.log("[2] SolverRegistry:     ", address(registry));
 
-        // ── 3. EpochRNG ──────────────────────────────────────────────────────
-        epochRng = new GhostLockEpochRNG(randomnessSender, deployer);
-        console.log("[3] GhostLockEpochRNG:  ", address(epochRng));
+        // ── 3. DrandBeacon + EpochRNG ────────────────────────────────────────
+        beacon = new DrandBeacon();
+        console.log("[3] DrandBeacon:        ", address(beacon));
+
+        epochRng = new GhostLockEpochRNG(beacon, epochAnchor, roundAnchor, roundsPerEpoch);
+        console.log("    GhostLockEpochRNG:  ", address(epochRng));
+        console.log("    Epoch anchor:       ", epochAnchor);
+        console.log("    Round anchor:       ", roundAnchor);
 
         // ── 4. GhostLockLiveness ─────────────────────────────────────────────
         liveness = new GhostLockLiveness(blocklockSender, treasury);

@@ -71,7 +71,7 @@ export default function HomePage() {
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link to="/trade">
+              <Link to="/holmeswap">
                 <Button size="lg" className="w-full sm:w-auto">
                   Start Trading
                   <ArrowRight className="ml-2 w-5 h-5" />
@@ -244,7 +244,7 @@ export default function HomePage() {
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link to="/trade">
+              <Link to="/holmeswap">
                 <Button size="lg" className="w-full sm:w-auto">
                   Launch App
                   <ArrowRight className="ml-2 w-5 h-5" />

@@ -137,9 +137,9 @@ class SchedulerService {
           const isEmpty = !seed || seed === '0x0000000000000000000000000000000000000000000000000000000000000000';
           
           if (isEmpty && !solverService.requestedEpochs.has(epoch)) {
-            console.log(`[EpochSeedMonitor] Proactively requesting seed for epoch ${epoch}`);
-            await solverService.requestEpochSeed(epoch);
-            solverService.requestedEpochs.add(epoch);
+            console.log(`[EpochSeedMonitor] Proactively seeding epoch ${epoch} from drand`)
+            await solverService.ensureEpochSeed(epoch)
+            solverService.requestedEpochs.add(epoch)
           }
         } catch (error) {
           console.warn(`[EpochSeedMonitor] Error checking epoch ${epoch}:`, error.message);

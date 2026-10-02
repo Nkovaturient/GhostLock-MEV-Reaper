@@ -81,7 +81,7 @@
 
 ### 📁 `/services` - Core Business Logic
 
-**`solver.js`** - Main settlement orchestrator
+**`solver.js`** - Main settlement orchestrator (canonical solver; replaces solver-node)
 - **SolverService class** - Central coordinator
 - `initialize()` - Sets up provider, signer, verifies contracts
 - `start()` - Begins settlement loop
@@ -97,6 +97,8 @@
 - `requestEpochSeed()` - Calls EpochRNG contract
 - `waitForEpochSeed()` - Polls until seed available
 - Tracks settlement statistics
+
+The canonical solver lives in `server/services/solver.js` (started by `index.js`). It subsumes the former `solver-node/` prototype: batch discovery, drand epoch seeding, clearing-price computation, SolverBoard bidding/settlement, and optional Express Relay fallback. Register the solver wallet via `node scripts/register-solver.js` after each new SolverRegistry deploy.
 
 **`intents-watcher.js`** - Blockchain event listener
 - **startIntentWatcher()** - Main watcher function

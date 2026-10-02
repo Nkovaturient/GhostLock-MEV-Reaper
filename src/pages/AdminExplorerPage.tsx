@@ -128,9 +128,8 @@ export default function AdminExplorerPage() {
           <div>
             <p className="font-medium text-white">Unsupported network</p>
             <p className="text-sm text-ghost-300 mt-1">
-              Switch wallet to Base Sepolia ({SUPPORTED_CHAINS.BASE_SEPOLIA}), Arbitrum Sepolia (
-              {SUPPORTED_CHAINS.ARB_SEPOLIA}), Arbitrum One ({SUPPORTED_CHAINS.ARBITRUM_ONE}), or Base (
-              {SUPPORTED_CHAINS.BASE_MAINNET}).
+              Switch wallet to Arbitrum Sepolia ({SUPPORTED_CHAINS.ARB_SEPOLIA}) or Arbitrum One (
+              {SUPPORTED_CHAINS.ARBITRUM_ONE}).
             </p>
           </div>
         </motion.div>

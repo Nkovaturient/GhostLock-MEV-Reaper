@@ -4,10 +4,12 @@ import { useSwapStore, type IntentStatus } from '../stores/swapStore'
 const statusToStep: Record<IntentStatus, number> = {
   idle: 0,
   encrypting: 1,
+  submitting: 1,
   locked: 2,
   ordering: 3,
   competing: 4,
   settled: 5,
+  error: 0,
 }
 
 export function useTimelineProgress(intentStatus: IntentStatus) {

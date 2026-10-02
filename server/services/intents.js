@@ -2,6 +2,7 @@ const ethers = require("ethers");
 const { CONFIG, ABIS } = require("../config.js");
 const { setTimeout: delay } = require("timers/promises");
 const db = require("../utils/db.js");
+const { requestIdFromEventArg } = require("../utils/requestId.js");
 
 const PROVIDER = process.env.PRICE_FEED_PROVIDER || "pyth";
 const BASE = process.env.PRICE_FEED_BASE_URL || "";
@@ -65,7 +66,8 @@ async function fetchDecryptedIntents(provider, fromBlock, toBlock, epochFilter =
   const intents = [];
   for (const ev of events) {
     try {
-      const requestId  = Number(ev.args?.requestId);
+      const requestId  = requestIdFromEventArg(ev.args?.requestId);
+      if (!requestId) continue;
       const marketId   = Number(ev.args?.marketId);
       const epoch      = Number(ev.args?.epoch);
       const forced     = Boolean(ev.args?.forced);

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { SwapErrorField } from '../Swap/SwapInlineError'
 
 export interface TokenInfo {
   symbol:   string
@@ -29,11 +30,13 @@ interface SwapState {
   countdown:     number
   intentStatus:  IntentStatus
   targetBlock:   number
-  lastRequestId: number | null
+  unlockRound:   number | null
+  lastRequestId: string | null
   txHash:            `0x${string}` | null
   revealTxHash:      `0x${string}` | null
   ciphertextPreview: string | null
   error:             string | null
+  errorField:        SwapErrorField | null
   slippageBps: number
   submissionOraclePrice: number | null
   clearingPrice: bigint | null
@@ -67,11 +70,13 @@ interface SwapState {
   setCountdown:            (countdown: number)           => void
   setIntentStatus:         (status: IntentStatus)        => void
   setTargetBlock:          (block: number)               => void
-  setLastRequestId:        (id: number | null)           => void
+  setUnlockRound:          (round: number | null)        => void
+  setLastRequestId:        (id: string | null)           => void
   setTxHash:               (hash: `0x${string}` | null) => void
   setRevealTxHash:         (hash: `0x${string}` | null) => void
   setCiphertextPreview:    (preview: string | null)      => void
   setError:                (error: string | null)        => void
+  setSwapError:            (error: string | null, field?: SwapErrorField | null) => void
   setSlippageBps:          (slippageBps: number)           => void
   setSubmissionOraclePrice:(submissionOraclePrice: number | null)  => void
   setClearingPrice:        (clearingPrice: bigint | null)        => void
@@ -96,6 +101,7 @@ interface SwapState {
   setEstimatedMevSavings:  (savings: number | null)       => void
 
   reset:                   ()                            => void
+  clearIntentProgress:     ()                            => void
 }
 
 const ETH:  TokenInfo = { symbol: 'ETH',  address: '', decimals: 18 }
@@ -106,9 +112,9 @@ export const useSwapStore = create<SwapState>((set) => ({
   tokenIn: ETH, tokenOut: USDC,
   amountIn: '', amountOut: '',
   step: 0, countdown: 0,
-  intentStatus: 'idle', targetBlock: 0,
+  intentStatus: 'idle', targetBlock: 0, unlockRound: null,
   lastRequestId: null, txHash: null, revealTxHash: null,
-  ciphertextPreview: null, error: null,
+  ciphertextPreview: null, error: null, errorField: null,
   slippageBps: 50,
   submissionOraclePrice: null, clearingPrice: null,
   mevSavings: '0', winningBid: '0',
@@ -143,11 +149,13 @@ export const useSwapStore = create<SwapState>((set) => ({
   setCountdown:            (countdown)             => set({ countdown }),
   setIntentStatus:         (intentStatus)          => set({ intentStatus }),
   setTargetBlock:          (targetBlock)           => set({ targetBlock }),
+  setUnlockRound:          (unlockRound)           => set({ unlockRound }),
   setLastRequestId:        (lastRequestId)         => set({ lastRequestId }),
   setTxHash:               (txHash)                => set({ txHash }),
   setRevealTxHash:         (revealTxHash)          => set({ revealTxHash }),
   setCiphertextPreview:    (ciphertextPreview)      => set({ ciphertextPreview }),
-  setError:                (error)                 => set({ error }),
+  setError:                (error)                 => set({ error, errorField: error ? 'general' : null }),
+  setSwapError:            (error, field = null)   => set({ error, errorField: error ? (field ?? 'general') : null }),
   setSlippageBps:          (slippageBps)           => set({ slippageBps }),
   setSubmissionOraclePrice:(submissionOraclePrice)  => set({ submissionOraclePrice }),
   setClearingPrice:        (clearingPrice)          => set({ clearingPrice }),
@@ -171,12 +179,22 @@ export const useSwapStore = create<SwapState>((set) => ({
   setMevProtectionEnabled: (mevProtectionEnabled) => set({ mevProtectionEnabled }),
   setEstimatedMevSavings:  (estimatedMevSavings)  => set({ estimatedMevSavings }),
 
+  clearIntentProgress: () => set({
+    step: 0, countdown: 0,
+    intentStatus: 'idle', targetBlock: 0, unlockRound: null,
+    lastRequestId: null, txHash: null, revealTxHash: null,
+    ciphertextPreview: null, error: null, errorField: null,
+    submissionOraclePrice: null, clearingPrice: null,
+    mevSavings: '0', winningBid: '0',
+    encryptionStatus: 'idle',
+  }),
+
   reset: () => set({
     amountIn: '', amountOut: '',
     step: 0, countdown: 0,
-    intentStatus: 'idle', targetBlock: 0,
+    intentStatus: 'idle', targetBlock: 0, unlockRound: null,
     lastRequestId: null, txHash: null, revealTxHash: null,
-    ciphertextPreview: null, error: null,
+    ciphertextPreview: null, error: null, errorField: null,
     submissionOraclePrice: null, clearingPrice: null,
     mevSavings: '0', winningBid: '0',
 

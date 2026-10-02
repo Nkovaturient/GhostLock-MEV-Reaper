@@ -1,54 +1,54 @@
 /**
- * Single place for post-submit lock behavior: advance when GhostLock reports isReady,
- * and recover via Blocklock key + forceReveal inside [revealDeadline, slashDeadline).
+ * Post-submit lock behavior: advance when GhostLock reports isReady,
+ * and reveal via tlock decrypt + revealTlockPlaintext after unlock round.
  */
 import { useEffect, useRef } from 'react'
 import {
   useAccount,
-  useBlockNumber,
   useChainId,
   usePublicClient,
   useReadContract,
   useWalletClient,
   useWriteContract,
 } from 'wagmi'
-import { BrowserProvider } from 'ethers'
-import { toHex } from 'viem'
+import { hexToString, toHex } from 'viem'
 
 import { useSwapStore } from '../stores/swapStore'
 import { GhostLockLivenessABI } from '../ABI/GhostLockLiveness'
 import { getAddresses } from '../contracts/config'
-import { BlocklockService } from '../../lib/blocklock-service'
+import {
+  decryptTlockCiphertextRaw,
+  unlockTimeForRound,
+} from '../../lib/tlock-service'
 import { getEip1559GasForWallet } from '../lib/eip1559SubmitGas'
+import { requestIdToBigInt } from '../lib/requestId'
 
-const IS_READY_REFETCH_MS = 10_000
-const RECOVERY_POLL_MS = 20_000
+const IS_READY_REFETCH_MS = 15_000
+const RECOVERY_POLL_MS = 30_000
 
-async function walletClientToSigner(wc: {
-  transport: unknown
-  chain?: { id?: number; name?: string }
-  account?: { address: `0x${string}` }
-}) {
-  const provider = new BrowserProvider(wc.transport as any, {
-    chainId: wc.chain?.id ?? 421614,
-    name: wc.chain?.name ?? 'Arbitrum Sepolia',
-  })
-  return provider.getSigner(wc.account?.address)
+type IntentRowMeta = {
+  isTlock: boolean
+  unlockRound: number
+  tlockCiphertext: string | null
 }
 
-function intentDeadlines(data: unknown): { reveal: bigint; slash: bigint } | null {
+function intentRowMeta(data: unknown): IntentRowMeta | null {
   if (data == null || typeof data !== 'object') return null
   const o = data as Record<string, unknown>
   if ('revealDeadline' in o && 'slashDeadline' in o) {
+    const tlockHex = o.tlockCiphertext as `0x${string}` | undefined
     return {
-      reveal: BigInt(o.revealDeadline as bigint),
-      slash: BigInt(o.slashDeadline as bigint),
+      isTlock: Boolean(o.isTlock),
+      unlockRound: Number(o.unlockRound ?? 0),
+      tlockCiphertext: tlockHex && tlockHex !== '0x' ? hexToString(tlockHex) : null,
     }
   }
-  if (Array.isArray(data) && data.length > 9) {
+  if (Array.isArray(data) && data.length > 12) {
+    const tlockHex = data[4] as `0x${string}` | undefined
     return {
-      reveal: BigInt(data[8] as bigint),
-      slash: BigInt(data[9] as bigint),
+      isTlock: Boolean(data[5]),
+      unlockRound: Number(data[6] ?? 0),
+      tlockCiphertext: tlockHex && tlockHex !== '0x' ? hexToString(tlockHex) : null,
     }
   }
   return null
@@ -79,12 +79,13 @@ export function useIntentLivenessFollowup() {
     functionName: 'isReady',
     args:
       lockedFollowupEnabled && lastRequestId != null
-        ? [BigInt(lastRequestId)]
+        ? [requestIdToBigInt(lastRequestId)]
         : undefined,
     query: {
       enabled: lockedFollowupEnabled,
       refetchInterval: IS_READY_REFETCH_MS,
-      staleTime: IS_READY_REFETCH_MS / 2,
+      refetchIntervalInBackground: false,
+      staleTime: IS_READY_REFETCH_MS,
     },
   })
 
@@ -97,38 +98,32 @@ export function useIntentLivenessFollowup() {
     functionName: 'intents',
     args:
       recoveryReadsEnabled && lastRequestId != null
-        ? [BigInt(lastRequestId)]
+        ? [requestIdToBigInt(lastRequestId)]
         : undefined,
     query: {
       enabled: recoveryReadsEnabled,
       refetchInterval: RECOVERY_POLL_MS,
-      staleTime: RECOVERY_POLL_MS / 2,
+      refetchIntervalInBackground: false,
+      staleTime: RECOVERY_POLL_MS,
     },
   })
 
-  const { data: blockNumber } = useBlockNumber({
-    chainId,
-    watch: true,
-  })
-
-  const forceRevealInFlight = useRef(false)
-  const forceRevealDoneRef = useRef(false)
-  const prevRequestIdRef = useRef<number | null>(null)
+  const tlockRevealInFlight = useRef(false)
+  const tlockRevealDoneRef = useRef(false)
+  const prevRequestIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (lastRequestId !== prevRequestIdRef.current) {
       prevRequestIdRef.current = lastRequestId
-      forceRevealInFlight.current = false
-      forceRevealDoneRef.current = false
+      tlockRevealInFlight.current = false
+      tlockRevealDoneRef.current = false
     }
   }, [lastRequestId])
 
   useEffect(() => {
     if (!lockedFollowupEnabled || !isReady || intentStatus !== 'locked') return
     setIntentStatus('ordering')
-    setStep(4)
-    const t = setTimeout(() => setIntentStatus('competing'), 2_000)
-    return () => clearTimeout(t)
+    setStep(3)
   }, [
     lockedFollowupEnabled,
     isReady,
@@ -148,52 +143,53 @@ export function useIntentLivenessFollowup() {
       return
     }
 
-    const deadlines = intentDeadlines(intentRow)
-    const bn = blockNumber
-    if (!deadlines || bn == null) return
-    if (bn < deadlines.reveal || bn >= deadlines.slash) return
+    const meta = intentRowMeta(intentRow)
+    if (!meta?.isTlock) return
 
     let cancelled = false
 
-    const tick = async () => {
-      if (cancelled || forceRevealDoneRef.current || forceRevealInFlight.current) return
-      try {
-        const signer = await walletClientToSigner(walletClient as any)
-        const service = new BlocklockService(signer, chainId)
-        const key = await service.fetchDecryptionKeyBytes(BigInt(lastRequestId))
-        if (cancelled || !key?.length) return
+    const tickTlock = async () => {
+      if (cancelled || tlockRevealDoneRef.current || tlockRevealInFlight.current) return
+      const unlockTs = unlockTimeForRound(meta.unlockRound)
+      if (Math.floor(Date.now() / 1000) < unlockTs) return
+      if (!meta.tlockCiphertext) return
 
-        forceRevealInFlight.current = true
-        const keyHex = toHex(key)
+      try {
+        tlockRevealInFlight.current = true
+        const plain = await decryptTlockCiphertextRaw(meta.tlockCiphertext)
+        const plaintextHex = toHex(plain)
         const gasFees = await getEip1559GasForWallet(publicClient)
 
         await publicClient.simulateContract({
           address: addrs.GhostLockLiveness,
           abi: GhostLockLivenessABI,
-          functionName: 'forceReveal',
-          args: [BigInt(lastRequestId), keyHex],
+          functionName: 'revealTlockPlaintext',
+          args: [requestIdToBigInt(lastRequestId), plaintextHex],
           account: address,
         })
 
         const hash = await writeContractAsync({
           address: addrs.GhostLockLiveness,
           abi: GhostLockLivenessABI,
-          functionName: 'forceReveal',
-          args: [BigInt(lastRequestId), keyHex],
+          functionName: 'revealTlockPlaintext',
+          args: [requestIdToBigInt(lastRequestId), plaintextHex],
           ...gasFees,
         })
-        forceRevealDoneRef.current = true
+        tlockRevealDoneRef.current = true
         setRevealTxHash(hash)
+        // #region agent log
+        fetch('http://127.0.0.1:7863/ingest/1c9654de-6579-4cb1-ad7e-6ea69c8510bd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6912e8'},body:JSON.stringify({sessionId:'6912e8',hypothesisId:'H2',location:'useIntentLivenessFollowup.ts:reveal',message:'revealTlockPlaintext sent',data:{requestId:lastRequestId,hash},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e)
-        console.warn('[useIntentLivenessFollowup] forceReveal', msg)
+        console.warn('[useIntentLivenessFollowup] revealTlockPlaintext', msg)
       } finally {
-        forceRevealInFlight.current = false
+        tlockRevealInFlight.current = false
       }
     }
 
-    const id = setInterval(tick, RECOVERY_POLL_MS)
-    void tick()
+    const id = setInterval(() => { void tickTlock() }, RECOVERY_POLL_MS)
+    void tickTlock()
     return () => {
       cancelled = true
       clearInterval(id)
@@ -204,9 +200,7 @@ export function useIntentLivenessFollowup() {
     publicClient,
     address,
     lastRequestId,
-    chainId,
     intentRow,
-    blockNumber,
     addrs.GhostLockLiveness,
     writeContractAsync,
     setRevealTxHash,

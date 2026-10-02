@@ -1,73 +1,31 @@
 import type { PublicClient } from 'viem'
 import { GhostLockLivenessABI } from '../ABI/GhostLockLiveness'
-import { BlocklockSenderPriceABI } from '../ABI/BlocklockSenderPrice'
 
-export type SubmitIntentMinWeiResult = {
-  requestPrice: bigint
-  bondMinimum: bigint
-  minValue: bigint
+const BOND_CACHE_TTL_MS = 5 * 60_000
+const bondCache = new Map<string, { value: bigint; ts: number }>()
+
+function bondCacheKey(chainId: number, livenessAddress: string) {
+  return `${chainId}:${livenessAddress.toLowerCase()}`
 }
 
-/**
- * Blocklock enforces callbackGasLimit <= maxGasLimit (often 500k on Randamu senders).
- * Sending AUCTION.CALLBACK_GAS_LIMIT above that reverts the whole submit.
- */
-export async function getEffectiveCallbackGasLimit(
+/** tlock submit path: bond only (no blocklock requestPrice). Cached 5 min per chain + contract. */
+export async function getTlockSubmitValueWei(
   publicClient: PublicClient,
   livenessAddress: `0x${string}`,
-  desired: number,
-): Promise<number> {
-  try {
-    const blocklockAddr = await publicClient.readContract({
-      address: livenessAddress,
-      abi: GhostLockLivenessABI,
-      functionName: 'blocklock',
-    })
-    const cfg = await publicClient.readContract({
-      address: blocklockAddr,
-      abi: BlocklockSenderPriceABI,
-      functionName: 'getConfig',
-    })
-    const maxGasLimit = Number((cfg as readonly [bigint, ...unknown[]])[0])
-    if (!Number.isFinite(maxGasLimit) || maxGasLimit <= 0) return desired
-    return Math.min(desired, maxGasLimit)
-  } catch {
-    return desired
+): Promise<bigint> {
+  const chainId = publicClient.chain?.id ?? 0
+  const key = bondCacheKey(chainId, livenessAddress)
+  const hit = bondCache.get(key)
+  if (hit && Date.now() - hit.ts < BOND_CACHE_TTL_MS) {
+    return hit.value
   }
-}
 
-/**
- * Matches GhostLockLiveness.submitIntentWithBond: msg.value must be >=
- * blocklock.calculateRequestPriceNative(callbackGasLimit) + BOND_MINIMUM.
- */
-export async function getSubmitIntentMinValueWei(
-  publicClient: PublicClient,
-  livenessAddress: `0x${string}`,
-  callbackGasLimit: number,
-): Promise<SubmitIntentMinWeiResult> {
-  const [bondMinimum, blocklockAddr] = await Promise.all([
-    publicClient.readContract({
-      address: livenessAddress,
-      abi: GhostLockLivenessABI,
-      functionName: 'BOND_MINIMUM',
-    }),
-    publicClient.readContract({
-      address: livenessAddress,
-      abi: GhostLockLivenessABI,
-      functionName: 'blocklock',
-    }),
-  ])
-
-  const requestPrice = await publicClient.readContract({
-    address: blocklockAddr,
-    abi: BlocklockSenderPriceABI,
-    functionName: 'calculateRequestPriceNative',
-    args: [callbackGasLimit],
+  const bondMinimum = await publicClient.readContract({
+    address: livenessAddress,
+    abi: GhostLockLivenessABI,
+    functionName: 'BOND_MINIMUM',
   })
-
-  return {
-    requestPrice,
-    bondMinimum,
-    minValue: requestPrice + bondMinimum,
-  }
+  const value = bondMinimum + (bondMinimum * 5n) / 100n
+  bondCache.set(key, { value, ts: Date.now() })
+  return value
 }

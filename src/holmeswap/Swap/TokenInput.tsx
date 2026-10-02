@@ -2,12 +2,11 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
-import { useAccount, useBalance } from 'wagmi'
-import { useChainId } from 'wagmi'
 
 import { useSwapStore, type TokenInfo, type TradeTab } from '../stores/swapStore'
+import { useTokenBalance } from '../hooks/useTokenBalance'
 import { getTokenIcon } from '../assets/TokenIcons'
-import { TOKEN_LIST, getTokenAddress, isNativeToken } from '../contracts/tokens'
+import { TOKEN_LIST } from '../contracts/tokens'
 import { cn } from '../../lib/utils'
 
 const MENU_Z = 50_000
@@ -30,26 +29,6 @@ export function SwapArrowButton() {
       </svg>
     </motion.button>
   )
-}
-
-function useTokenBalance(symbol: string, decimals: number) {
-  const { address: userAddr, isConnected } = useAccount()
-  const chainId = useChainId()
-  const tokenAddr = isNativeToken(symbol) ? undefined : getTokenAddress(symbol, chainId)
-
-  const { data, isLoading } = useBalance({
-    address: isConnected ? userAddr : undefined,
-    token:   tokenAddr,
-    query:   { enabled: isConnected && !!userAddr, refetchInterval: 10_000 },
-  })
-
-  if (!isConnected) return { rawBalance: null, formattedBalance: null, isLoading: false }
-  if (isLoading)    return { rawBalance: null, formattedBalance: null, isLoading: true  }
-  if (!data)        return { rawBalance: null, formattedBalance: '—', isLoading: false }
-
-  const dispDecimals = decimals <= 6 ? 4 : decimals <= 8 ? 6 : 4
-  const formatted = parseFloat(data.formatted).toFixed(dispDecimals)
-  return { rawBalance: data.value, formattedBalance: formatted, isLoading: false }
 }
 
 function rowLabelFor(tab: TradeTab, row: 'in' | 'out'): string {
@@ -96,7 +75,7 @@ export default function TokenInput({ type = 'in', readOnly = false, onAmountChan
   const setToken = type === 'in' ? setTokenIn : setTokenOut
 
   const { rawBalance, formattedBalance: balance, isLoading: balLoading } =
-    useTokenBalance(token.symbol, token.decimals)
+    useTokenBalance(token.symbol, token.decimals, type === 'in', type === 'in' ? amountIn : '')
 
   const isOverBalance = (() => {
     if (!rawBalance || !amount) return false
@@ -262,21 +241,28 @@ export default function TokenInput({ type = 'in', readOnly = false, onAmountChan
         )}
       </div>
 
-      <input
-        type="text"
-        inputMode="decimal"
-        value={amount}
-        onChange={e => handleChange(e.target.value)}
-        readOnly={readOnly}
-        placeholder="0"
-        className={cn(
-          'w-full bg-transparent text-3xl font-semibold text-foreground',
-          'outline-none placeholder:text-muted-foreground/40',
-          readOnly && 'cursor-default',
-          isOverBalance && type === 'in' && 'text-destructive/80'
-        )}
-        aria-label={type === 'in' ? 'Amount to swap' : 'Amount to receive'}
-      />
+      <motion.div
+        key={type === 'out' ? amount : undefined}
+        initial={type === 'out' && amount ? { opacity: 0.85, scale: 0.995 } : false}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+      >
+        <input
+          type="text"
+          inputMode="decimal"
+          value={amount}
+          onChange={e => handleChange(e.target.value)}
+          readOnly={readOnly}
+          placeholder="0"
+          className={cn(
+            'w-full bg-transparent text-3xl font-semibold text-foreground',
+            'outline-none placeholder:text-muted-foreground/40',
+            readOnly && 'cursor-default',
+            isOverBalance && type === 'in' && 'text-destructive/80'
+          )}
+          aria-label={type === 'in' ? 'Amount to swap' : 'Amount to receive'}
+        />
+      </motion.div>
 
       {type === 'out' && amount && parseFloat(amount) > 0 && (
         <p className="text-xs text-muted-foreground mt-1 tabular-nums">

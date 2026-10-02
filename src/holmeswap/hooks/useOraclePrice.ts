@@ -1,188 +1,321 @@
 /**
- * useOraclePrice.ts — Dual Oracle Price Feed (Pyth + Chainlink)
+ * useOraclePrice.ts — Oracle price feed for HolmeSwap UI
  *
- * Fetches real-time prices from multiple sources with:
- *   - 7-second refresh interval
- *   - Staleness detection (1 hour threshold)
- *   - Confidence band validation (5% max)
- *   - Price deviation alerts
- *
- * Integrates with GhostLock PriceOracle contract validation.
+ * Priority: on-chain Pyth getPriceUnsafe → CoinGecko USD fallback → optional Hermes (API key).
+ * Avoids PriceOracle.getLatestPrice (reverts when feeds stale) and unauthenticated Hermes (401).
  */
 import { useEffect, useMemo, useRef, useCallback, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useChainId, usePublicClient } from 'wagmi'
 
 import { useSwapStore } from '../stores/swapStore'
-import { PriceOracleABI } from '../ABI/PriceOracleABI'
-import { getAddresses, getMarketFromTokenPair } from '../contracts/config'
-import { PYTH_PRICE_IDS, HERMES_BASE } from '../../lib/pyth-ids'
+import { getMarketFromTokenPair, getMarketId } from '../contracts/config'
+import { HERMES_BASE } from '../../lib/pyth-ids'
+import {
+  PYTH_ABI,
+  PYTH_CONTRACT_BY_CHAIN,
+  getCoingeckoId,
+  getPythPriceIdForSymbol,
+} from '../lib/oracleFeeds'
+import type { PublicClient } from 'viem'
+import { isDocumentVisible } from '../lib/wagmiQueryDefaults'
 
-// Refresh interval - 7 seconds as per spec
-const REFRESH_INTERVAL_MS = 7_000
-
-// Contract thresholds (match PriceOracle.sol)
-const STALENESS_THRESHOLD_SECONDS = 3600 // 1 hour
-const MAX_CONFIDENCE_BPS = 500 // 5%
-const MAX_DEVIATION_BPS = 500 // 5%
+const REFRESH_INTERVAL_MS = 60_000
+const LEG_CACHE_TTL_MS = 60_000
+const STALENESS_THRESHOLD_SECONDS = 3600
+const STABLE_STALENESS_THRESHOLD_SECONDS = 7 * 24 * 3600
+const MAX_CONFIDENCE_BPS = 500
+const MAX_DEVIATION_BPS = 500
 
 interface PythPriceResponse {
   parsed?: Array<{
     id?: string
-    price?: {
-      price?: string
-      expo?: number
-      conf?: string
-    }
-    metadata?: {
-      publish_time?: number
-    }
+    price?: { price?: string; expo?: number; conf?: string }
+    metadata?: { publish_time?: number }
   }>
 }
 
-interface OraclePriceData {
-  price: number // normalized to 8 decimals
-  rawPrice: bigint // raw from contract
+export interface OraclePriceData {
+  price: number
+  rawPrice: bigint
   confidence: number
   publishTime: number
-  source: 'pyth' | 'chainlink' | 'both' | 'none'
+  source: 'pyth' | 'chainlink' | 'both' | 'coingecko' | 'none'
   isStale: boolean
   confidenceBps: number
   usdValue: number
 }
 
-interface TokenPairPrices {
-  /** Pyth legs for market.base and market.quote (USD-normalized). */
+export interface TokenPairPrices {
   base: OraclePriceData | null
   quote: OraclePriceData | null
-  /** Quote token per 1 base (e.g. USDC per ETH). Used for intents + swap math. */
   exchangeRate: number | null
-  rate8Dec: bigint | null // Exchange rate normalized to 8 decimals
+  rate8Dec: bigint | null
   isValid: boolean
   error: string | null
 }
 
-// Fetch from Pyth Hermes
-async function fetchPythPrice(priceId: string): Promise<OraclePriceData | null> {
+function normalizePythPrice(priceNum: bigint, expo: number, conf: bigint): OraclePriceData {
+  const shift = expo + 8
+  let normalizedPrice: bigint
+  if (shift >= 0) {
+    normalizedPrice = priceNum * BigInt(10 ** Number(shift))
+  } else {
+    normalizedPrice = priceNum / BigInt(10 ** Number(-shift))
+  }
+
+  let normalizedConf: bigint
+  if (shift >= 0) {
+    normalizedConf = conf * BigInt(10 ** Number(shift))
+  } else {
+    normalizedConf = conf / BigInt(10 ** Number(-shift))
+  }
+
+  const price8Dec = Number(normalizedPrice) / 1e8
+  const confidence8Dec = Number(normalizedConf) / 1e8
+  const confidenceBps = price8Dec > 0 ? (confidence8Dec * 10000) / price8Dec : 0
+
+  return {
+    price: price8Dec,
+    rawPrice: normalizedPrice,
+    confidence: confidence8Dec,
+    publishTime: Math.floor(Date.now() / 1000),
+    source: 'pyth',
+    isStale: false,
+    confidenceBps,
+    usdValue: price8Dec,
+  }
+}
+
+function withPublishMeta(
+  data: OraclePriceData,
+  publishTime: number,
+  stalenessSec: number,
+): OraclePriceData {
+  const isStale = (Date.now() / 1000 - publishTime) > stalenessSec
+  return { ...data, publishTime, isStale }
+}
+
+const legCache = new Map<string, { leg: OraclePriceData; ts: number }>()
+
+function legCacheKey(chainId: number, symbol: string) {
+  return `${chainId}:${symbol.toUpperCase()}`
+}
+
+function getCachedLeg(chainId: number, symbol: string): OraclePriceData | null {
+  const hit = legCache.get(legCacheKey(chainId, symbol))
+  if (!hit || Date.now() - hit.ts > LEG_CACHE_TTL_MS) return null
+  return hit.leg
+}
+
+function setCachedLeg(chainId: number, symbol: string, leg: OraclePriceData) {
+  legCache.set(legCacheKey(chainId, symbol), { leg, ts: Date.now() })
+}
+
+async function fetchCoingeckoBatch(symbols: string[]): Promise<Map<string, OraclePriceData>> {
+  const out = new Map<string, OraclePriceData>()
+  const ids = [...new Set(symbols.map(getCoingeckoId).filter(Boolean) as string[])]
+  if (ids.length === 0) return out
+
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids.join(','))}&vs_currencies=usd`,
+    )
+    if (!res.ok) return out
+    const data = await res.json() as Record<string, { usd?: number }>
+    const now = Math.floor(Date.now() / 1000)
+
+    for (const sym of symbols) {
+      const id = getCoingeckoId(sym)
+      const px = id ? data[id]?.usd : undefined
+      if (px == null || px <= 0) continue
+      out.set(sym.toUpperCase(), {
+        price: px,
+        rawPrice: BigInt(Math.round(px * 1e8)),
+        confidence: px * 0.001,
+        publishTime: now,
+        source: 'coingecko',
+        isStale: false,
+        confidenceBps: 10,
+        usdValue: px,
+      })
+    }
+  } catch {
+    /* ignore */
+  }
+  return out
+}
+
+async function fetchPythBatchOnChain(
+  publicClient: PublicClient | undefined,
+  chainId: number,
+  symbols: string[],
+): Promise<Map<string, OraclePriceData>> {
+  const out = new Map<string, OraclePriceData>()
+  if (!publicClient) return out
+
+  const pythAddr = PYTH_CONTRACT_BY_CHAIN[chainId]
+  if (!pythAddr) return out
+
+  const contracts = symbols
+    .map(sym => ({ sym, id: getPythPriceIdForSymbol(sym) }))
+    .filter((x): x is { sym: string; id: `0x${string}` } => Boolean(x.id))
+    .map(({ sym, id }) => ({
+      sym,
+      address: pythAddr,
+      abi: PYTH_ABI,
+      functionName: 'getPriceUnsafe' as const,
+      args: [id] as const,
+    }))
+
+  if (contracts.length === 0) return out
+
+  try {
+    const results = await publicClient.multicall({
+      contracts: contracts.map(({ address, abi, functionName, args }) => ({
+        address, abi, functionName, args,
+      })),
+    })
+
+    results.forEach((result, i) => {
+      if (result.status !== 'success') return
+      const sym = contracts[i].sym
+      const p = result.result as { price: bigint; conf: bigint; expo: number; publishTime: bigint }
+      const staleness =
+        sym.toUpperCase() === 'USDC' ? STABLE_STALENESS_THRESHOLD_SECONDS : STALENESS_THRESHOLD_SECONDS
+      const base = normalizePythPrice(BigInt(p.price), p.expo, BigInt(p.conf))
+      out.set(sym.toUpperCase(), withPublishMeta(base, Number(p.publishTime), staleness))
+    })
+  } catch {
+    /* ignore */
+  }
+  return out
+}
+
+async function resolveLeg(
+  symbol: string,
+  chainId: number,
+  publicClient: PublicClient | undefined,
+  pythBatch: Map<string, OraclePriceData>,
+  cgBatch: Map<string, OraclePriceData>,
+): Promise<{ leg: OraclePriceData | null; path: string }> {
+  const symU = symbol.toUpperCase()
+  const cached = getCachedLeg(chainId, symU)
+  if (cached) return { leg: cached, path: 'cache' }
+
+  const onChain = pythBatch.get(symU)
+  if (onChain && !onChain.isStale) {
+    setCachedLeg(chainId, symU, onChain)
+    return { leg: onChain, path: 'pyth-onchain' }
+  }
+
+  const cg = cgBatch.get(symU)
+  if (cg) {
+    setCachedLeg(chainId, symU, cg)
+    return { leg: cg, path: onChain ? 'coingecko-stale-fallback' : 'coingecko' }
+  }
+
+  if (onChain) {
+    setCachedLeg(chainId, symU, onChain)
+    return { leg: onChain, path: 'pyth-onchain-stale' }
+  }
+
+  const pythId = getPythPriceIdForSymbol(symbol)
+  if (pythId) {
+    const hermes = await fetchPythHermes(pythId)
+    if (hermes && !hermes.isStale) {
+      setCachedLeg(chainId, symU, hermes)
+      return { leg: hermes, path: 'hermes' }
+    }
+  }
+
+  return { leg: null, path: 'none' }
+}
+
+async function fetchMarketLegs(
+  baseSymbol: string,
+  quoteSymbol: string,
+  publicClient: PublicClient | undefined,
+  chainId: number,
+): Promise<{ base: OraclePriceData | null; quote: OraclePriceData | null; paths: string[] }> {
+  const baseU = baseSymbol.toUpperCase()
+  const quoteU = quoteSymbol.toUpperCase()
+
+  const baseCached = getCachedLeg(chainId, baseU)
+  const quoteCached = getCachedLeg(chainId, quoteU)
+  if (baseCached && quoteCached) {
+    return { base: baseCached, quote: quoteCached, paths: ['cache', 'cache'] }
+  }
+
+  const cgBatch = await fetchCoingeckoBatch([baseSymbol, quoteSymbol])
+  const baseCg = cgBatch.get(baseU)
+  const quoteCg = cgBatch.get(quoteU)
+
+  if (baseCg && quoteCg) {
+    setCachedLeg(chainId, baseU, baseCg)
+    setCachedLeg(chainId, quoteU, quoteCg)
+    return { base: baseCg, quote: quoteCg, paths: ['coingecko', 'coingecko'] }
+  }
+
+  const missingForPyth = [baseSymbol, quoteSymbol].filter(
+    sym => !cgBatch.get(sym.toUpperCase()) && !getCachedLeg(chainId, sym.toUpperCase()),
+  )
+  const pythBatch =
+    missingForPyth.length > 0
+      ? await fetchPythBatchOnChain(publicClient, chainId, missingForPyth)
+      : new Map<string, OraclePriceData>()
+
+  const [baseResult, quoteResult] = await Promise.all([
+    resolveLeg(baseSymbol, chainId, publicClient, pythBatch, cgBatch),
+    resolveLeg(quoteSymbol, chainId, publicClient, pythBatch, cgBatch),
+  ])
+
+  return {
+    base: baseResult.leg,
+    quote: quoteResult.leg,
+    paths: [baseResult.path, quoteResult.path],
+  }
+}
+
+async function fetchPythHermes(priceId: string): Promise<OraclePriceData | null> {
+  const apiKey = import.meta.env.VITE_PYTH_API_KEY
+  if (!apiKey) return null
+
+  const base = import.meta.env.VITE_PYTH_HERMES_BASE || 'https://pyth.dourolabs.app/hermes'
   try {
     const params = new URLSearchParams()
     params.append('ids[]', priceId)
-    const url = `${HERMES_BASE}/v2/updates/price/latest?${params.toString()}`
-
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const url = `${base}/v2/updates/price/latest?${params.toString()}`
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    if (!res.ok) return null
 
     const data: PythPriceResponse = await res.json()
     const parsed = data.parsed?.[0]
-
-    if (!parsed?.price?.price || !parsed.price.expo) return null
-
-    const priceNum = BigInt(parsed.price.price)
-    const expo = parsed.price.expo
-    const conf = parsed.price.conf ? BigInt(parsed.price.conf) : BigInt(0)
-
-    // Convert to 8-decimal normalized price (same logic as PriceOracle._convertPythPrice)
-    const shift = expo + 8
-    let normalizedPrice: bigint
-    if (shift >= 0) {
-      normalizedPrice = priceNum * BigInt(10 ** Number(shift))
-    } else {
-      normalizedPrice = priceNum / BigInt(10 ** Number(-shift))
-    }
-
-    // Calculate confidence in same units
-    let normalizedConf: bigint
-    if (shift >= 0) {
-      normalizedConf = conf * BigInt(10 ** Number(shift))
-    } else {
-      normalizedConf = conf / BigInt(10 ** Number(-shift))
-    }
-
-    const price8Dec = Number(normalizedPrice) / 1e8
-    const confidence8Dec = Number(normalizedConf) / 1e8
-    const confidenceBps = price8Dec > 0 ? (confidence8Dec * 10000) / price8Dec : 0
+    if (!parsed?.price?.price || parsed.price.expo == null) return null
 
     const publishTime = parsed.metadata?.publish_time ?? Math.floor(Date.now() / 1000)
-    const isStale = (Date.now() / 1000 - publishTime) > STALENESS_THRESHOLD_SECONDS
-
-    return {
-      price: price8Dec,
-      rawPrice: normalizedPrice,
-      confidence: confidence8Dec,
-      publishTime,
-      source: 'pyth',
-      isStale,
-      confidenceBps,
-      usdValue: price8Dec,
-    }
-  } catch (e) {
-    console.warn('[useOraclePrice] Pyth fetch failed:', e)
+    const normalized = normalizePythPrice(
+      BigInt(parsed.price.price),
+      parsed.price.expo,
+      parsed.price.conf ? BigInt(parsed.price.conf) : BigInt(0),
+    )
+    return withPublishMeta(normalized, publishTime, STALENESS_THRESHOLD_SECONDS)
+  } catch {
     return null
   }
 }
 
-// Fetch from contract (uses Pyth primary + Chainlink fallback)
-async function fetchContractPrice(
-  publicClient: ReturnType<typeof usePublicClient>,
-  chainId: number,
-  tokenAddress: string
-): Promise<OraclePriceData | null> {
-  if (!publicClient) return null
-
-  try {
-    const addrs = getAddresses(chainId)
-
-    const raw = await publicClient.readContract({
-      address: addrs.PriceOracle,
-      abi: PriceOracleABI,
-      functionName: 'getLatestPrice',
-      args: [tokenAddress as `0x${string}`],
-    })
-    const result = raw as unknown as {
-      price: bigint
-      confidence: bigint
-      timestamp: bigint
-      source: string
-    }
-
-    const price8Dec = Number(result.price) / 1e8
-    const confidence8Dec = Number(result.confidence) / 1e8
-    const confidenceBps = price8Dec > 0 ? (confidence8Dec * 10000) / price8Dec : 0
-    const publishTime = Number(result.timestamp)
-    const isStale = (Date.now() / 1000 - publishTime) > STALENESS_THRESHOLD_SECONDS
-
-    return {
-      price: price8Dec,
-      rawPrice: result.price,
-      confidence: confidence8Dec,
-      publishTime,
-      source: result.source as 'pyth' | 'chainlink',
-      isStale,
-      confidenceBps,
-      usdValue: price8Dec,
-    }
-  } catch (e) {
-    console.warn('[useOraclePrice] Contract fetch failed:', e)
-    return null
-  }
-}
-
-// Map token symbol to Pyth price ID
-function getPythPriceId(symbol: string): string | null {
-  const sym = symbol.toUpperCase()
-  if (sym === 'ETH' || sym === 'WETH') return PYTH_PRICE_IDS.ETH_USD
-  if (sym === 'BTC' || sym === 'WBTC') return PYTH_PRICE_IDS.BTC_USD
-  if (sym === 'USDC') return PYTH_PRICE_IDS.USDC_USD
-  return null
-}
-
-// Map token symbol to oracle token address (for contract calls)
-function getTokenOracleAddress(symbol: string, chainId: number): string {
-  // These would be the registered tokens in PriceOracle
-  // For now return placeholder - in production these come from config
-  const sym = symbol.toUpperCase()
-  // Return zero address for ETH/native, or actual token addresses
-  return sym === 'ETH' ? '0x0000000000000000000000000000000000000000' : '0x0000000000000000000000000000000000000000'
+/** Quote token per 1 unit of tokenIn (trade-direction rate for UI). */
+export function getDisplayExchangeRate(
+  tokenIn: string,
+  tokenOut: string,
+  quotePerBase: number,
+): number {
+  const resolved = getMarketFromTokenPair(tokenIn, tokenOut)
+  if (!resolved || quotePerBase <= 0) return quotePerBase
+  return resolved.intentSide === 'sell' ? quotePerBase : 1 / quotePerBase
 }
 
 interface UseOraclePriceReturn {
@@ -202,29 +335,29 @@ export function useOraclePrice(): UseOraclePriceReturn {
   const publicClient = usePublicClient()
   const queryClient = useQueryClient()
 
-  const [nextRefreshIn, setNextRefreshIn] = useState(7)
+  const [nextRefreshIn, setNextRefreshIn] = useState(Math.floor(REFRESH_INTERVAL_MS / 1000))
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Countdown timer for refresh
-  useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      setNextRefreshIn(prev => {
-        if (prev <= 1) {
-          // Trigger refetch
-          queryClient.invalidateQueries({ queryKey: ['oracle-price', tokenIn.symbol, tokenOut.symbol] })
-          return 7
-        }
-        return prev - 1
-      })
-    }, 1000)
+  const queryKey = useMemo(() => {
+    const resolved = getMarketFromTokenPair(tokenIn.symbol, tokenOut.symbol)
+    const marketId = resolved
+      ? getMarketId(resolved.market.base, resolved.market.quote)
+      : `${tokenIn.symbol}-${tokenOut.symbol}`
+    return ['oracle-price', marketId, chainId] as const
+  }, [tokenIn.symbol, tokenOut.symbol, chainId])
 
+  useEffect(() => {
+    setNextRefreshIn(Math.floor(REFRESH_INTERVAL_MS / 1000))
+    intervalRef.current = setInterval(() => {
+      setNextRefreshIn(prev => (prev <= 1 ? Math.floor(REFRESH_INTERVAL_MS / 1000) : prev - 1))
+    }, 1000)
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [queryClient, tokenIn.symbol, tokenOut.symbol])
+  }, [tokenIn.symbol, tokenOut.symbol, chainId])
 
-  const { data, isLoading, dataUpdatedAt } = useQuery({
-    queryKey: ['oracle-price', tokenIn.symbol, tokenOut.symbol, chainId],
+  const { data, isLoading, dataUpdatedAt, isFetching } = useQuery({
+    queryKey,
     queryFn: async (): Promise<TokenPairPrices> => {
       const inU = tokenIn.symbol.toUpperCase()
       const outU = tokenOut.symbol.toUpperCase()
@@ -253,10 +386,12 @@ export function useOraclePrice(): UseOraclePriceReturn {
       }
 
       const { market } = resolved
-      const [baseLeg, quoteLeg] = await Promise.all([
-        fetchPythPrice(getPythPriceId(market.base) as string),
-        fetchPythPrice(getPythPriceId(market.quote) as string),
-      ])
+      const { base: baseLeg, quote: quoteLeg } = await fetchMarketLegs(
+        market.base,
+        market.quote,
+        publicClient ?? undefined,
+        chainId,
+      )
 
       if (!baseLeg || !quoteLeg) {
         return {
@@ -292,7 +427,6 @@ export function useOraclePrice(): UseOraclePriceReturn {
         }
       }
 
-      /** Quote token per 1 base (e.g. USDC per ETH): USD_base / USD_quote */
       const quotePerBase = baseLeg.price / quoteLeg.price
       const rate8Dec = (baseLeg.rawPrice * BigInt(1e8)) / quoteLeg.rawPrice
 
@@ -307,15 +441,19 @@ export function useOraclePrice(): UseOraclePriceReturn {
         error: null,
       }
     },
-    refetchInterval: REFRESH_INTERVAL_MS,
-    staleTime: REFRESH_INTERVAL_MS / 2,
+    refetchInterval: () => (isDocumentVisible() ? REFRESH_INTERVAL_MS : false),
+    refetchIntervalInBackground: false,
+    staleTime: REFRESH_INTERVAL_MS - 5000,
+    retry: 1,
+    retryOnMount: false,
+    refetchOnWindowFocus: false,
     enabled: tokenIn.symbol !== '' && tokenOut.symbol !== '',
   })
 
   const refresh = useCallback(() => {
-    setNextRefreshIn(7)
-    queryClient.invalidateQueries({ queryKey: ['oracle-price', tokenIn.symbol, tokenOut.symbol] })
-  }, [queryClient, tokenIn.symbol, tokenOut.symbol])
+    setNextRefreshIn(Math.floor(REFRESH_INTERVAL_MS / 1000))
+    queryClient.invalidateQueries({ queryKey })
+  }, [queryClient, queryKey])
 
   return {
     prices: data || {
@@ -326,21 +464,20 @@ export function useOraclePrice(): UseOraclePriceReturn {
       isValid: false,
       error: null,
     },
-    isLoading,
+    isLoading: isLoading || isFetching,
     lastUpdated: dataUpdatedAt || null,
     nextRefreshIn,
     refresh,
   }
 }
 
-// Hook for calculating expected output with slippage
-export function useSwapCalculation() {
+export function useSwapCalculation(pricesOverride: TokenPairPrices) {
   const amountIn = useSwapStore(s => s.amountIn)
   const tokenIn = useSwapStore(s => s.tokenIn)
   const tokenOut = useSwapStore(s => s.tokenOut)
   const slippageBps = useSwapStore(s => s.slippageBps)
 
-  const { prices } = useOraclePrice()
+  const prices = pricesOverride
 
   return useMemo(() => {
     const inNum = parseFloat(amountIn) || 0
@@ -397,7 +534,6 @@ export function useSwapCalculation() {
   }, [amountIn, prices, slippageBps, tokenIn.symbol, tokenOut.symbol, tokenOut.decimals])
 }
 
-// Validate clearing price against oracle (matches contract logic)
 export function validateClearingPrice(
   oraclePrice: bigint,
   clearingPrice: bigint,

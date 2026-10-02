@@ -8,6 +8,8 @@ interface ImportMetaEnv {
   readonly VITE_EPOCH_RNG_ADDRESS?: string
   readonly VITE_MOCK_ETH_ADDRESS?: string
   readonly VITE_MOCK_USDC_ADDRESS?: string
+  readonly VITE_ARBITRUM_SEPOLIA_USDC_ADDRESS?: string
+  readonly VITE_ARBITRUM_ONE_USDC_ADDRESS?: string
   readonly VITE_MOCK_TOKEN_A_ADDRESS?: string
   readonly VITE_MOCK_TOKEN_B_ADDRESS?: string
   readonly VITE_SOLVER_API_URL?: string
@@ -41,6 +43,17 @@ interface ImportMetaEnv {
   readonly VITE_BASE_MAINNET_GHOSTLOCK_EPOCH_RNG_ADDRESS?: string
   readonly VITE_BASE_MAINNET_PRICE_ORACLE_ADDRESS?: string
   readonly VITE_BASE_MAINNET_SOLVER_REGISTRY_ADDRESS?: string
+  readonly VITE_CHAIN_ID?: string
+  readonly VITE_BLOCKLOCK_IBE_PUBLIC_KEY?: string
+  readonly VITE_BLOCKLOCK_NETWORK_CHAIN_ID?: string
+  readonly VITE_BLOCKLOCK_SENDER_ARB_SEPOLIA?: string
+  readonly VITE_BLOCKLOCK_SENDER_ARB_MAINNET?: string
+  readonly VITE_RANDOMNESS_SENDER_ARB_SEPOLIA?: string
+  readonly VITE_RANDOMNESS_SENDER_ARB_MAINNET?: string
+  readonly VITE_ARBITRUM_SEPOLIA_PRICE_ORACLE_ADDRESS?: string
+  readonly VITE_ARBITRUM_SEPOLIA_SOLVER_REGISTRY_ADDRESS?: string
+  readonly VITE_PYTH_API_KEY?: string
+  readonly VITE_PYTH_HERMES_BASE?: string
 }
 
 interface ImportMeta {

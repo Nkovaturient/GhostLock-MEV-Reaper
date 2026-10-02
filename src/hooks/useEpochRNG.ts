@@ -2,62 +2,32 @@ import { useAccount, useReadContract, useWriteContract, useWaitForTransactionRec
 import { useSharedBlockNumber } from './useSharedBlockNumber'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { EPOCH_RNG_ABI } from '../lib/abis'
-import { IntentService } from '../lib/intent-service'
+import { getCurrentEpoch } from '../lib/epoch'
 import { useNetworkConfig } from './useNetworkConfig'
-import { ethers } from 'ethers'
+import { fetchBeacon, DRAND_EVMNET, signatureToG1 } from '../lib/drand'
 import { useState } from 'react'
 
 export interface EpochSeedData {
   epoch: number
   seed: `0x${string}` | null
-  isRequested: boolean
-  requestId: number | null
-  lastEpoch: number
-  lastRequestId: number
+  isSeeded: boolean
+  drandRound: number | null
 }
 
 export function useEpochRNG() {
-  const { address, chainId } = useAccount()
-  const { blockNumber } = useSharedBlockNumber() // Use shared block number
+  const { chainId } = useAccount()
+  const { blockNumber } = useSharedBlockNumber()
   const queryClient = useQueryClient()
   const { writeContractAsync } = useWriteContract()
   const { EPOCH_RNG_ADDRESS, isSupported } = useNetworkConfig()
-  
+
   const [lastTxHash, setLastTxHash] = useState<`0x${string}` | null>(null)
-  
+
   const { data: receipt } = useWaitForTransactionReceipt({
     hash: lastTxHash || undefined,
   })
 
-  const currentEpoch = blockNumber 
-    ? IntentService.getCurrentEpoch(blockNumber)
-    : null
-
-  // Reduced frequency - lastEpoch doesn't change frequently
-  const lastEpochQuery = useReadContract({
-    chainId: chainId ? Number(chainId) : undefined,
-    abi: EPOCH_RNG_ABI,
-    address: EPOCH_RNG_ADDRESS as `0x${string}` | undefined,
-    functionName: 'lastEpoch',
-    query: {
-      enabled: isSupported && !!EPOCH_RNG_ADDRESS,
-      refetchInterval: 60000, // Reduced from 30s to 60s
-      staleTime: 30000,
-    },
-  })
-
-  // Reduced frequency - lastRequestId doesn't change frequently
-  const lastRequestIdQuery = useReadContract({
-    chainId: chainId ? Number(chainId) : undefined,
-    abi: EPOCH_RNG_ABI,
-    address: EPOCH_RNG_ADDRESS as `0x${string}` | undefined,
-    functionName: 'lastRequestId',
-    query: {
-      enabled: isSupported && !!EPOCH_RNG_ADDRESS,
-      refetchInterval: 60000, // Reduced from 30s to 60s
-      staleTime: 30000,
-    },
-  })
+  const currentEpoch = blockNumber ? getCurrentEpoch(blockNumber) : null
 
   const getEpochSeed = (epoch: number) => {
     return useReadContract({
@@ -68,7 +38,7 @@ export function useEpochRNG() {
       args: [BigInt(epoch)],
       query: {
         enabled: isSupported && !!EPOCH_RNG_ADDRESS && epoch >= 0,
-        refetchInterval: 60000, // Reduced from 30s to 60s - epoch seeds are relatively static
+        refetchInterval: 60000,
         staleTime: 30000,
       },
     })
@@ -78,7 +48,7 @@ export function useEpochRNG() {
     chainId: isSupported && chainId ? Number(chainId) : undefined,
     abi: EPOCH_RNG_ABI,
     address: isSupported && EPOCH_RNG_ADDRESS ? (EPOCH_RNG_ADDRESS as `0x${string}`) : undefined,
-    eventName: 'EpochSeed',
+    eventName: 'EpochSeedReceived',
     enabled: isSupported && !!chainId && !!EPOCH_RNG_ADDRESS,
     onLogs: (logs) => {
       logs.forEach(log => {
@@ -89,53 +59,44 @@ export function useEpochRNG() {
     },
   })
 
-  useWatchContractEvent({
-    chainId: isSupported && chainId ? Number(chainId) : undefined,
-    abi: EPOCH_RNG_ABI,
-    address: isSupported && EPOCH_RNG_ADDRESS ? (EPOCH_RNG_ADDRESS as `0x${string}`) : undefined,
-    eventName: 'EpochRequested',
-    enabled: isSupported && !!chainId && !!EPOCH_RNG_ADDRESS,
-    onLogs: (logs) => {
-      logs.forEach(log => {
-        const epoch = Number((log as any).args?.epoch ?? (log as any).args?.[0])
-        queryClient.invalidateQueries({ queryKey: ['epoch-seed', epoch] })
-        queryClient.invalidateQueries({ queryKey: ['epoch-seeds'] })
-      })
-    },
-  })
-
-  const requestEpochSeed = async (epoch: number, callbackGasLimit: number = 500000) => {
+  /** Relay a drand evmnet round and seed the epoch on-chain. Permissionless — no dcipher fee. */
+  const seedEpochFromDrand = async (epoch: number) => {
     if (!EPOCH_RNG_ADDRESS || !chainId) {
       throw new Error('EpochRNG contract address not configured or chain not connected')
     }
 
-    try {
-      const hash = await writeContractAsync({
-        chainId,
-        abi: EPOCH_RNG_ABI,
-        address: EPOCH_RNG_ADDRESS as `0x${string}`,
-        functionName: 'requestEpochSeed',
-        args: [BigInt(epoch), callbackGasLimit],
-        value: ethers.parseEther('0.001'),
-      })
+    const { createPublicClient, http } = await import('viem')
+    const { arbitrumSepolia, arbitrum } = await import('viem/chains')
+    const chain = Number(chainId) === 42161 ? arbitrum : arbitrumSepolia
+    const publicClient = createPublicClient({ chain, transport: http() })
 
-      setLastTxHash(hash)
-      queryClient.invalidateQueries({ queryKey: ['epoch-seed', epoch] })
-      return hash
-    } catch (error) {
-      console.error('Error requesting epoch seed:', error)
-      throw error
-    }
+    const round = await publicClient.readContract({
+      address: EPOCH_RNG_ADDRESS as `0x${string}`,
+      abi: EPOCH_RNG_ABI,
+      functionName: 'roundForEpoch',
+      args: [BigInt(epoch)],
+    })
+
+    const beacon = await fetchBeacon(Number(round), DRAND_EVMNET)
+    const { x, y } = signatureToG1(beacon.signature)
+
+    const hash = await writeContractAsync({
+      chainId,
+      abi: EPOCH_RNG_ABI,
+      address: EPOCH_RNG_ADDRESS as `0x${string}`,
+      functionName: 'seedEpochWithSignature',
+      args: [BigInt(epoch), x, y],
+    })
+
+    setLastTxHash(hash)
+    queryClient.invalidateQueries({ queryKey: ['epoch-seed', epoch] })
+    return hash
   }
 
   return {
     currentEpoch,
-    lastEpoch: lastEpochQuery.data ? Number(lastEpochQuery.data) : null,
-    lastRequestId: lastRequestIdQuery.data ? Number(lastRequestIdQuery.data) : null,
     getEpochSeed,
-    requestEpochSeed,
-    isLoading: lastEpochQuery.isLoading || lastRequestIdQuery.isLoading,
-    error: lastEpochQuery.error || lastRequestIdQuery.error,
+    seedEpochFromDrand,
     receipt,
     lastTxHash,
   }
@@ -143,7 +104,7 @@ export function useEpochRNG() {
 
 export function useEpochSeed(epoch: number | null) {
   const { getEpochSeed } = useEpochRNG()
-  
+
   const seedQuery = epoch !== null ? getEpochSeed(epoch) : null
 
   return useQuery<EpochSeedData>({
@@ -153,10 +114,8 @@ export function useEpochSeed(epoch: number | null) {
         return {
           epoch: epoch || 0,
           seed: null,
-          isRequested: false,
-          requestId: null,
-          lastEpoch: 0,
-          lastRequestId: 0,
+          isSeeded: false,
+          drandRound: null,
         }
       }
 
@@ -166,10 +125,8 @@ export function useEpochSeed(epoch: number | null) {
       return {
         epoch,
         seed: isEmpty ? null : seed,
-        isRequested: !isEmpty,
-        requestId: null,
-        lastEpoch: 0,
-        lastRequestId: 0,
+        isSeeded: !isEmpty,
+        drandRound: null,
       }
     },
     enabled: epoch !== null && !!seedQuery,
@@ -181,4 +138,3 @@ export function useCurrentEpochSeed() {
   const { currentEpoch } = useEpochRNG()
   return useEpochSeed(currentEpoch)
 }
-

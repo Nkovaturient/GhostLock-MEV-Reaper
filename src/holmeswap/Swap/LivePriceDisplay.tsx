@@ -1,21 +1,22 @@
 /**
- * LivePriceDisplay.tsx
- *
- * Real-time price display with:
- * - 7-second refresh countdown
- * - Confidence indicator (green/yellow/red)
- * - Staleness warnings
- * - Exchange rate with token symbols
+ * LivePriceDisplay.tsx — compact side panel; wide, natural height, no internal scroll.
  */
 import React from 'react'
 import { motion } from 'framer-motion'
-import { TrendingUp, AlertTriangle, RefreshCw, Activity } from 'lucide-react'
+import { TrendingUp, AlertTriangle, RefreshCw, Activity, ArrowLeftRight, ShieldCheck } from 'lucide-react'
 import { useSwapStore } from '../stores/swapStore'
-import { useOraclePrice, useSwapCalculation } from '../hooks/useOraclePrice'
+import { useSwapCalculation, getDisplayExchangeRate } from '../hooks/useOraclePrice'
+import { useOraclePriceContext } from '../context/OraclePriceContext'
 import { cn } from '../../lib/utils'
 
 interface LivePriceDisplayProps {
   className?: string
+}
+
+function formatRate(value: number, decimals = 6): string {
+  if (value >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 2 })
+  if (value >= 1) return value.toFixed(4)
+  return value.toFixed(decimals)
 }
 
 export default function LivePriceDisplay({ className }: LivePriceDisplayProps) {
@@ -23,55 +24,72 @@ export default function LivePriceDisplay({ className }: LivePriceDisplayProps) {
   const tokenOut = useSwapStore(s => s.tokenOut)
   const slippageBps = useSwapStore(s => s.slippageBps)
 
-  const { prices, isLoading, nextRefreshIn, refresh } = useOraclePrice()
-  const { amountOut, amountOutMin, usdValueIn, usdValueOut } = useSwapCalculation()
+  const { prices, isLoading, nextRefreshIn, refresh } = useOraclePriceContext()
+  const { amountOut, amountOutMin, usdValueIn, usdValueOut } = useSwapCalculation(prices)
 
   const amountIn = useSwapStore(s => s.amountIn)
+  const [rateInverted, setRateInverted] = React.useState(false)
 
-  // Format the exchange rate
-  const rateText = React.useMemo(() => {
-    if (!prices.exchangeRate) return '—'
-    return `1 ${tokenIn.symbol} ≈ ${prices.exchangeRate.toFixed(6)} ${tokenOut.symbol}`
+  React.useEffect(() => {
+    setRateInverted(false)
+  }, [tokenIn.symbol, tokenOut.symbol])
+
+  const tradeRate = React.useMemo(() => {
+    if (!prices.exchangeRate) return null
+    return getDisplayExchangeRate(tokenIn.symbol, tokenOut.symbol, prices.exchangeRate)
   }, [prices.exchangeRate, tokenIn.symbol, tokenOut.symbol])
 
-  // Get confidence color
+  const rateText = React.useMemo(() => {
+    if (!tradeRate) return '—'
+    if (rateInverted) {
+      const inv = 1 / tradeRate
+      return `1 ${tokenOut.symbol} ≈ ${formatRate(inv)} ${tokenIn.symbol}`
+    }
+    return `1 ${tokenIn.symbol} ≈ ${formatRate(tradeRate)} ${tokenOut.symbol}`
+  }, [tradeRate, rateInverted, tokenIn.symbol, tokenOut.symbol])
+
   const confidenceColor = React.useMemo(() => {
-    if (!prices.base?.confidenceBps) return 'neutral'
-    if (prices.base.confidenceBps <= 100) return 'high'    // ≤1%
-    if (prices.base.confidenceBps <= 500) return 'medium'  // ≤5%
-    return 'low'                                           // >5%
-  }, [prices.base?.confidenceBps])
+    const bps = prices.base?.confidenceBps ?? prices.quote?.confidenceBps
+    if (bps == null) return 'neutral'
+    if (bps <= 100) return 'high'
+    if (bps <= 500) return 'medium'
+    return 'low'
+  }, [prices.base?.confidenceBps, prices.quote?.confidenceBps])
 
   const confidenceConfig = {
     high: {
-      color: 'text-holme-green-success',
-      bg: 'bg-holme-green-success/15',
-      border: 'border-holme-green-success/30',
-      label: 'High',
+      label: 'High Confidence',
+      dot: 'bg-holme-green-success',
+      badge:
+        'bg-holme-green-success/18 text-emerald-950 border-holme-green-success/45 shadow-sm',
+      accent: 'border-l-holme-green-success',
+      icon: 'text-holme-green-success',
     },
     medium: {
-      color: 'text-holme-warning',
-      bg: 'bg-holme-warning/15',
-      border: 'border-holme-warning/30',
-      label: 'Medium',
+      label: 'Medium Confidence',
+      dot: 'bg-holme-warning',
+      badge: 'bg-holme-warning/20 text-amber-950 border-holme-warning/45 shadow-sm',
+      accent: 'border-l-holme-warning',
+      icon: 'text-holme-warning',
     },
     low: {
-      color: 'text-destructive',
-      bg: 'bg-destructive/10',
-      border: 'border-destructive/25',
-      label: 'Low',
+      label: 'Low Confidence',
+      dot: 'bg-destructive',
+      badge: 'bg-destructive/15 text-red-950 border-destructive/40 shadow-sm',
+      accent: 'border-l-destructive',
+      icon: 'text-destructive',
     },
     neutral: {
-      color: 'text-muted-foreground',
-      bg: 'bg-muted/60',
-      border: 'border-border/50',
-      label: '—',
+      label: 'Confidence Unknown',
+      dot: 'bg-muted-foreground/50',
+      badge: 'bg-muted/50 text-muted-foreground border-border/50',
+      accent: 'border-l-border',
+      icon: 'text-muted-foreground',
     },
   }
 
   const config = confidenceConfig[confidenceColor]
 
-  // Don't show if same token
   if (tokenIn.symbol === tokenOut.symbol) {
     return null
   }
@@ -81,50 +99,46 @@ export default function LivePriceDisplay({ className }: LivePriceDisplayProps) {
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        'rounded-2xl p-3 sm:p-4 border backdrop-blur-md shadow-holme-soft',
+        'rounded-3xl border backdrop-blur-md shadow-holme-soft overflow-hidden',
+        'p-4 sm:p-5',
         prices.isValid
-          ? 'bg-card/80 border-border/50'
+          ? 'bg-card/75 border-border/45'
           : 'bg-destructive/5 border-destructive/25',
-        className
+        className,
       )}
     >
-      {/* Header with refresh countdown */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3 min-w-0">
+      {/* Transparent header — blends with card glass */}
+      <div className="flex items-center justify-between gap-3 mb-4 bg-transparent">
         <div className="flex items-center gap-2 min-w-0">
           <Activity
             className={cn(
-              'w-4 h-4 shrink-0',
-              isLoading ? 'text-holme-warning animate-pulse' : 'text-primary/70'
+              'w-4 h-4 shrink-0 drop-shadow-sm',
+              isLoading ? 'text-holme-warning animate-pulse' : 'text-primary',
             )}
+            aria-hidden
           />
-          <span className="text-xs sm:text-sm font-semibold text-foreground truncate">
+          <span className="text-sm font-semibold text-foreground truncate drop-shadow-sm">
             Live Oracle Price
           </span>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={refresh}
-            className="p-1.5 rounded-xl hover:bg-muted/80 border border-transparent hover:border-border/40 transition-colors"
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/40 dark:hover:bg-white/10 transition-colors"
             disabled={isLoading}
             type="button"
             aria-label="Refresh oracle price"
           >
-            <RefreshCw
-              className={cn(
-                'w-3.5 h-3.5 text-muted-foreground',
-                isLoading && 'animate-spin'
-              )}
-            />
+            <RefreshCw className={cn('w-3.5 h-3.5', isLoading && 'animate-spin')} />
           </motion.button>
-          <span className="text-[10px] sm:text-xs font-mono text-muted-foreground tabular-nums min-w-[1.75rem] text-center">
+          <span className="text-[11px] font-mono text-muted-foreground tabular-nums min-w-[2rem] text-center">
             {nextRefreshIn}s
           </span>
         </div>
       </div>
 
-      {/* Price error */}
       {prices.error && (
         <div className="flex items-center gap-2 p-2.5 mb-3 rounded-xl bg-destructive/10 border border-destructive/25">
           <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
@@ -132,89 +146,116 @@ export default function LivePriceDisplay({ className }: LivePriceDisplayProps) {
         </div>
       )}
 
-      {/* Exchange rate */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-1 sm:mb-3 min-w-0">
-        <div className="flex items-start sm:items-center gap-2 min-w-0">
-          <TrendingUp className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5 sm:mt-0" />
-          <span
-            className={cn(
-              'text-sm sm:text-base font-semibold break-words',
-              prices.isValid ? 'text-foreground' : 'text-muted-foreground'
-            )}
-          >
-            {rateText}
-          </span>
-        </div>
-        <div
+      {/* Rate row */}
+      <div className="flex items-center gap-2 mb-2 min-w-0">
+        <TrendingUp className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden />
+        <button
+          type="button"
+          onClick={() => tradeRate && setRateInverted(v => !v)}
+          disabled={!tradeRate}
           className={cn(
-            'px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-semibold border shrink-0 self-start sm:self-center',
-            config.bg,
-            config.border,
-            config.color
+            'text-left text-sm sm:text-[15px] font-semibold leading-snug min-w-0 flex-1',
+            'hover:text-primary transition-colors disabled:cursor-default',
+            prices.isValid ? 'text-foreground' : 'text-muted-foreground',
+          )}
+          title="Flip rate direction"
+        >
+          {rateText}
+        </button>
+        {tradeRate && (
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.92 }}
+            onClick={() => setRateInverted(v => !v)}
+            className="p-1.5 rounded-lg shrink-0 text-muted-foreground hover:text-foreground hover:bg-white/40 dark:hover:bg-white/10 transition-colors"
+            aria-label="Flip exchange rate"
+          >
+            <ArrowLeftRight className="w-4 h-4" />
+          </motion.button>
+        )}
+      </div>
+
+      {/* Confidence tab badge */}
+      <div className="flex justify-end mb-3">
+        <div
+          role="status"
+          aria-label={`Oracle confidence: ${config.label}`}
+          className={cn(
+            'inline-flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-lg border border-l-[3px]',
+            'text-[11px] font-semibold tracking-wide backdrop-blur-sm',
+            config.badge,
+            config.accent,
           )}
         >
-          {config.label} Confidence
+          <span className={cn('inline-flex h-2 w-2 shrink-0 rounded-full', config.dot)} aria-hidden />
+          <ShieldCheck className={cn('w-3.5 h-3.5 shrink-0', config.icon)} aria-hidden />
+          <span className="whitespace-nowrap">{config.label}</span>
         </div>
       </div>
 
-      {/* Price details grid */}
       {prices.isValid && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-3">
-          <div className="p-3 rounded-xl bg-muted/45 border border-border/35 min-w-0">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+        <div className="grid grid-cols-2 gap-2.5 mb-3">
+          <div className="p-3 rounded-xl bg-muted/35 border border-border/30 min-w-0">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium block">
               Input Value
             </span>
-            <div className="flex items-baseline flex-wrap gap-x-1 gap-y-0 mt-1">
-              <span className="text-sm sm:text-base font-semibold text-foreground tabular-nums">
+            <div className="flex items-baseline flex-wrap gap-x-1 mt-1.5 min-w-0">
+              <span className="text-base font-semibold text-foreground tabular-nums truncate">
                 {amountIn || '0'}
               </span>
-              <span className="text-xs text-muted-foreground">{tokenIn.symbol}</span>
+              <span className="text-xs text-muted-foreground shrink-0">{tokenIn.symbol}</span>
             </div>
             {usdValueIn != null && (
-              <span className="text-[10px] sm:text-xs text-muted-foreground block mt-0.5">
+              <span className="text-[11px] text-muted-foreground block mt-0.5">
                 ≈ ${usdValueIn.toFixed(2)}
               </span>
             )}
           </div>
 
-          <div className="p-3 rounded-xl bg-muted/45 border border-border/35 min-w-0">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+          <div className="p-3 rounded-xl bg-muted/35 border border-border/30 min-w-0">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium block">
               Expected Output
             </span>
-            <div className="flex items-baseline flex-wrap gap-x-1 gap-y-0 mt-1">
-              <span className="text-sm sm:text-base font-semibold text-foreground tabular-nums break-all">
+            <div className="flex items-baseline flex-wrap gap-x-1 mt-1.5 min-w-0">
+              <motion.span
+                key={amountOut}
+                initial={{ opacity: 0.6, y: 3 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-base font-semibold text-foreground tabular-nums truncate"
+              >
                 {amountOut || '—'}
-              </span>
+              </motion.span>
               <span className="text-xs text-muted-foreground shrink-0">{tokenOut.symbol}</span>
             </div>
             {amountOutMin && (
-              <span className="text-[10px] sm:text-xs text-holme-green-success font-medium block mt-0.5">
+              <span className="text-[11px] text-holme-green-success font-medium block mt-0.5 truncate">
                 ≥ {parseFloat(amountOutMin).toFixed(4)} min
+              </span>
+            )}
+            {usdValueOut != null && (
+              <span className="text-[11px] text-muted-foreground block mt-0.5">
+                ≈ ${usdValueOut.toFixed(2)}
               </span>
             )}
           </div>
         </div>
       )}
 
-      {/* Price source info */}
       {prices.base?.source && prices.quote?.source && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] sm:text-xs text-muted-foreground">
-          <span>Source: Pyth + Chainlink</span>
-          <span className="text-border" aria-hidden>
-            •
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground mb-2.5">
+          <span className="truncate">
+            Source: {prices.base.source === prices.quote.source ? prices.base.source : `${prices.base.source} + ${prices.quote.source}`}
           </span>
-          <span>Refreshed: {new Date().toLocaleTimeString()}</span>
+          <span className="text-border hidden sm:inline" aria-hidden>•</span>
+          <span className="shrink-0">Refreshed: {new Date().toLocaleTimeString()}</span>
         </div>
       )}
 
-      {/* Slippage info */}
-      <div className="mt-3 pt-3 border-t border-border/40">
-        <div className="flex items-center justify-between gap-2 text-xs sm:text-sm">
-          <span className="text-muted-foreground">Slippage Tolerance</span>
-          <span className="font-semibold text-foreground tabular-nums">
-            {(slippageBps / 100).toFixed(1)}%
-          </span>
-        </div>
+      <div className="pt-2.5 border-t border-border/35 flex items-center justify-between gap-2 text-xs">
+        <span className="text-muted-foreground">Slippage Tolerance</span>
+        <span className="font-semibold text-foreground tabular-nums">
+          {(slippageBps / 100).toFixed(1)}%
+        </span>
       </div>
     </motion.div>
   )

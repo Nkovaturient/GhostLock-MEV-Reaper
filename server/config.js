@@ -1,13 +1,14 @@
 /**
  * server/config.js — GhostLock/HolmeSwap server configuration
  *
- * All 6 contracts deployed on Arbitrum Sepolia (chain 421614):
- *   GhostLockLiveness  = 0x056B39F4fd80C86E44D2Fc6153A3e9F3d20a2C6C
- *   BatchSettlement    = 0x64593911b86889F45d1CbEaF40397c4807505EB8
- *   GhostLockEpochRNG  = 0x6a0e6F76Db61985bCB4e31C71226Ba1B35dBbF1A
- *   SolverBoard        = 0x1e457f34Bdccf28258Cd30956bb6F2df614ddBEF
- *   SolverRegistry     = 0xE8901D9f2f262f4F09E30344aA8470eCEbc64CBD
- *   PriceOracle        = 0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C
+ * All 7 contracts deployed on Arbitrum Sepolia (chain 421614):
+ *   GhostLockLiveness  = 0x9c3772c9B2E8ae8A074aa9Fc8Aaa4943e0ffC983
+ *   BatchSettlement    = 0x926349E53527f690E25CF9C5d60e8791985aD14E
+ *   GhostLockEpochRNG  = 0x73A35514Ab9405381A323c513220e20ACb9d7c30
+ *   DrandBeacon        = 0x74FBA5163505e43634F366c52C92824C23027076
+ *   SolverBoard        = 0xB1A20FFFf4E4e15c0735fc0a79ad8BB8F3909916
+ *   SolverRegistry     = 0x3302E3d04d166C6D23E5B09a29a8eE3d2C7Baf98
+ *   PriceOracle        = 0x86c4023741467c3179683ed152471921DC2D48BC
  *
  * Market: ETH/USDC (id=0), WBTC/USDC (id=1)
  * Tokens: WETH=0x82aF49447D8a07e3bd95BD0d56f35241523fBab1, USDC=0xaf88d065e77c8cC2239327C5EDb3A432268e5831
@@ -23,12 +24,13 @@ const CONFIG = {
   },
 
   CONTRACTS: {
-    GHOSTLOCK_LIVENESS:  process.env.GHOSTLOCK_LIVENESS_ADDRESS   || '0x056B39F4fd80C86E44D2Fc6153A3e9F3d20a2C6C',
-    BATCH_SETTLEMENT:    process.env.BATCH_SETTLEMENT_ADDRESS   || '0x64593911b86889F45d1CbEaF40397c4807505EB8',
-    EPOCH_RNG:           process.env.EPOCH_RNG_ADDRESS           || '0x6a0e6F76Db61985bCB4e31C71226Ba1B35dBbF1A',
-    SOLVER_BOARD:        process.env.SOLVER_BOARD_ADDRESS         || '0x1e457f34Bdccf28258Cd30956bb6F2df614ddBEF',
-    SOLVER_REGISTRY:     process.env.SOLVER_REGISTRY_ADDRESS    || '0xE8901D9f2f262f4F09E30344aA8470eCEbc64CBD',
-    PRICE_ORACLE:        process.env.PRICE_ORACLE_ADDRESS        || '0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C',
+    GHOSTLOCK_LIVENESS:  process.env.GHOSTLOCK_LIVENESS_ADDRESS   || '0x9c3772c9B2E8ae8A074aa9Fc8Aaa4943e0ffC983',
+    BATCH_SETTLEMENT:    process.env.BATCH_SETTLEMENT_ADDRESS   || '0x926349E53527f690E25CF9C5d60e8791985aD14E',
+    EPOCH_RNG:           process.env.EPOCH_RNG_ADDRESS           || '0x73A35514Ab9405381A323c513220e20ACb9d7c30',
+    DRAND_BEACON:        process.env.DRAND_BEACON_ADDRESS        || '0x74FBA5163505e43634F366c52C92824C23027076',
+    SOLVER_BOARD:        process.env.SOLVER_BOARD_ADDRESS         || '0xB1A20FFFf4E4e15c0735fc0a79ad8BB8F3909916',
+    SOLVER_REGISTRY:     process.env.SOLVER_REGISTRY_ADDRESS    || '0x3302E3d04d166C6D23E5B09a29a8eE3d2C7Baf98',
+    PRICE_ORACLE:        process.env.PRICE_ORACLE_ADDRESS        || '0x86c4023741467c3179683ed152471921DC2D48BC',
     // ERC-20 tokens for markets
     WETH:               process.env.WETH_ADDRESS               || '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
     USDC:               process.env.USDC_ADDRESS                || '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
@@ -38,8 +40,8 @@ const CONFIG = {
   // Solver: wallet used for settlement + SolverBoard operations
   // This wallet MUST:
   //   1. Own SolverBoard (to call selectWinner / setWinnerKeeper)
-  //   2. Own EpochRNG (to call requestEpochSeed)
-  //   3. Be registered as a solver in SolverRegistry (with 1 ETH bond)
+  // Solver wallet must be registered in SolverRegistry (with bond).
+  // Epoch seeding is permissionless — any account may relay drand and call seedEpochWithSignature.
   SOLVER: {
     PRIVATE_KEY:             process.env.SOLVER_PRIVATE_KEY,
     GAS_LIMIT:               1_500_000,

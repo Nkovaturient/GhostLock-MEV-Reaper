@@ -29,7 +29,6 @@ app.use(express.urlencoded({ extended: true }))
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 const auctionsRouter = require('./routes/auctions')
-const intentsRouter = require('./routes/intents')
 const marketsRouter = require('./routes/markets')
 const mevRouter = require('./routes/mev')
 const externalRouter = require('./routes/external')
@@ -37,7 +36,6 @@ const networkStats = require('./routes/network-stats')
 const { metricsHandler } = require('./utils/metrics.js')
 
 app.use('/api/auctions', auctionsRouter)
-app.use('/api/intents', intentsRouter)
 app.use('/api/markets', marketsRouter)
 app.use('/api/mev', mevRouter)
 app.use('/api/external', externalRouter)

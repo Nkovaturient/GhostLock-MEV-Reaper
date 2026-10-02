@@ -11,17 +11,13 @@ import { GHOSTLOCK_MARKETS, type GhostlockMarket } from '../../lib/ghostlockMark
 export const PLACEHOLDER_ZERO = '0x0000000000000000000000000000000000000000' as const
 
 export const SUPPORTED_CHAINS = {
-  BASE_SEPOLIA: 84532,
   ARB_SEPOLIA: 421614,
   ARBITRUM_ONE: 42161,
-  BASE_MAINNET: 8453,
 } as const
 
 export type SupportedChainId =
-  | typeof SUPPORTED_CHAINS.BASE_SEPOLIA
   | typeof SUPPORTED_CHAINS.ARB_SEPOLIA
   | typeof SUPPORTED_CHAINS.ARBITRUM_ONE
-  | typeof SUPPORTED_CHAINS.BASE_MAINNET
 
 export type HolmeswapCluster = {
   GhostLockEpochRNG: `0x${string}`
@@ -35,21 +31,13 @@ export type HolmeswapCluster = {
 // ─── Contract addresses ───────────────────────────────────────────────────────
 
 export const ADDRESSES: Record<SupportedChainId, HolmeswapCluster> = {
-  [SUPPORTED_CHAINS.BASE_SEPOLIA]: {
-    GhostLockEpochRNG: (import.meta.env.VITE_GHOSTLOCK_EPOCH_RNG_ADDRESS ?? '0x6a0e6F76Db61985bCB4e31C71226Ba1B35dBbF1A') as `0x${string}`,
-    PriceOracle: (import.meta.env.VITE_PRICE_ORACLE_ADDRESS ?? '0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C') as `0x${string}`,
-    SolverRegistry: (import.meta.env.VITE_SOLVER_REGISTRY_ADDRESS ?? '0xE8901D9f2f262f4F09E30344aA8470eCEbc64CBD') as `0x${string}`,
-    GhostLockLiveness: (import.meta.env.VITE_GHOSTLOCK_LIVENESS_ADDRESS ?? '0x056B39F4fd80C86E44D2Fc6153A3e9F3d20a2C6C') as `0x${string}`,
-    BatchSettlement: (import.meta.env.VITE_BATCH_SETTLEMENT_ADDRESS ?? '0x8aF0Ec5b9a22d02acdC0fb3ad75831fef3208706') as `0x${string}`,
-    SolverBoard: (import.meta.env.VITE_SOLVER_BOARD_ADDRESS ?? '0x1e457f34Bdccf28258Cd30956bb6F2df614ddBEF') as `0x${string}`,
-  },
   [SUPPORTED_CHAINS.ARB_SEPOLIA]: {
-    PriceOracle: '0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C',
-    SolverRegistry: '0xE8901D9f2f262f4F09E30344aA8470eCEbc64CBD',
-    GhostLockEpochRNG: '0x6a0e6F76Db61985bCB4e31C71226Ba1B35dBbF1A',
-    GhostLockLiveness: (import.meta.env.VITE_ARBITRUM_SEPOLIA_GHOSTLOCK_LIVENESS_ADDRESS ?? '0x056B39F4fd80C86E44D2Fc6153A3e9F3d20a2C6C') as `0x${string}`,
-    BatchSettlement: (import.meta.env.VITE_ARBITRUM_SEPOLIA_BATCH_SETTLEMENT_ADDRESS ?? '0x64593911b86889F45d1CbEaF40397c4807505EB8') as `0x${string}`,
-    SolverBoard: (import.meta.env.VITE_ARBITRUM_SEPOLIA_SOLVER_BOARD_ADDRESS ?? '0x1e457f34Bdccf28258Cd30956bb6F2df614ddBEF') as `0x${string}`,
+    PriceOracle: '0x86c4023741467c3179683ed152471921DC2D48BC',
+    SolverRegistry: '0x3302E3d04d166C6D23E5B09a29a8eE3d2C7Baf98',
+    GhostLockEpochRNG: '0x73A35514Ab9405381A323c513220e20ACb9d7c30',
+    GhostLockLiveness: (import.meta.env.VITE_ARBITRUM_SEPOLIA_GHOSTLOCK_LIVENESS_ADDRESS ?? '0x9c3772c9B2E8ae8A074aa9Fc8Aaa4943e0ffC983') as `0x${string}`,
+    BatchSettlement: (import.meta.env.VITE_ARBITRUM_SEPOLIA_BATCH_SETTLEMENT_ADDRESS ?? '0x926349E53527f690E25CF9C5d60e8791985aD14E') as `0x${string}`,
+    SolverBoard: (import.meta.env.VITE_ARBITRUM_SEPOLIA_SOLVER_BOARD_ADDRESS ?? '0xB1A20FFFf4E4e15c0735fc0a79ad8BB8F3909916') as `0x${string}`,
   },
   [SUPPORTED_CHAINS.ARBITRUM_ONE]: {
     GhostLockEpochRNG: (import.meta.env.VITE_ARBITRUM_ONE_GHOSTLOCK_EPOCH_RNG_ADDRESS ?? PLACEHOLDER_ZERO) as `0x${string}`,
@@ -59,21 +47,11 @@ export const ADDRESSES: Record<SupportedChainId, HolmeswapCluster> = {
     BatchSettlement: (import.meta.env.VITE_ARBITRUM_ONE_BATCH_SETTLEMENT_ADDRESS ?? PLACEHOLDER_ZERO) as `0x${string}`,
     SolverBoard: (import.meta.env.VITE_ARBITRUM_ONE_SOLVER_BOARD_ADDRESS ?? PLACEHOLDER_ZERO) as `0x${string}`,
   },
-  [SUPPORTED_CHAINS.BASE_MAINNET]: {
-    GhostLockEpochRNG: (import.meta.env.VITE_BASE_MAINNET_GHOSTLOCK_EPOCH_RNG_ADDRESS ?? PLACEHOLDER_ZERO) as `0x${string}`,
-    PriceOracle: (import.meta.env.VITE_BASE_MAINNET_PRICE_ORACLE_ADDRESS ?? PLACEHOLDER_ZERO) as `0x${string}`,
-    SolverRegistry: (import.meta.env.VITE_BASE_MAINNET_SOLVER_REGISTRY_ADDRESS ?? PLACEHOLDER_ZERO) as `0x${string}`,
-    GhostLockLiveness: (import.meta.env.VITE_BASE_MAINNET_GHOSTLOCK_LIVENESS_ADDRESS ?? PLACEHOLDER_ZERO) as `0x${string}`,
-    BatchSettlement: (import.meta.env.VITE_BASE_MAINNET_BATCH_SETTLEMENT_ADDRESS ?? PLACEHOLDER_ZERO) as `0x${string}`,
-    SolverBoard: (import.meta.env.VITE_BASE_MAINNET_SOLVER_BOARD_ADDRESS ?? PLACEHOLDER_ZERO) as `0x${string}`,
-  },
 }
 
 const SUPPORTED_CHAIN_IDS: readonly number[] = [
-  SUPPORTED_CHAINS.BASE_SEPOLIA,
   SUPPORTED_CHAINS.ARB_SEPOLIA,
   SUPPORTED_CHAINS.ARBITRUM_ONE,
-  SUPPORTED_CHAINS.BASE_MAINNET,
 ]
 
 export function isHolmeswapChainId(chainId: number): chainId is SupportedChainId {
@@ -88,7 +66,7 @@ export function isGhostLockLivenessConfigured(chainId: number): boolean {
 
 export function getAddresses(chainId: number): HolmeswapCluster {
   if (isHolmeswapChainId(chainId)) return ADDRESSES[chainId]
-  return ADDRESSES[SUPPORTED_CHAINS.BASE_SEPOLIA]
+  return ADDRESSES[SUPPORTED_CHAINS.ARB_SEPOLIA]
 }
 
 // ─── Auction constants (must match server/config.js + contracts) ──────────────

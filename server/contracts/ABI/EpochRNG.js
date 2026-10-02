@@ -1,483 +1,254 @@
-export const EpochRNGABI = [
+const EpochRNGABI = [
     {
+        "type": "constructor",
         "inputs": [
             {
-                "internalType": "address",
-                "name": "randomnessSender",
-                "type": "address"
+                "name": "beacon_",
+                "type": "address",
+                "internalType": "contract DrandBeacon"
             },
             {
-                "internalType": "address",
-                "name": "owner_",
-                "type": "address"
-            }
-        ],
-        "stateMutability": "nonpayable",
-        "type": "constructor"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "epoch",
-                "type": "uint256"
-            }
-        ],
-        "name": "RequestAlreadyPending",
-        "type": "error"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "epoch",
-                "type": "uint256"
-            }
-        ],
-        "name": "SeedAlreadyExists",
-        "type": "error"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "epoch",
-                "type": "uint256"
-            }
-        ],
-        "name": "SeedNotAvailable",
-        "type": "error"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": true,
-                "internalType": "uint256",
-                "name": "epoch",
-                "type": "uint256"
+                "name": "epochAnchor_",
+                "type": "uint256",
+                "internalType": "uint256"
             },
             {
-                "indexed": true,
-                "internalType": "uint256",
-                "name": "requestId",
-                "type": "uint256"
-            }
-        ],
-        "name": "EpochRequested",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": true,
-                "internalType": "uint256",
-                "name": "epoch",
-                "type": "uint256"
+                "name": "roundAnchor_",
+                "type": "uint64",
+                "internalType": "uint64"
             },
             {
-                "indexed": false,
-                "internalType": "bytes32",
-                "name": "seed",
-                "type": "bytes32"
+                "name": "roundsPerEpoch_",
+                "type": "uint64",
+                "internalType": "uint64"
             }
         ],
-        "name": "EpochSeedReceived",
-        "type": "event"
+        "stateMutability": "nonpayable"
     },
     {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": true,
-                "internalType": "address",
-                "name": "sender",
-                "type": "address"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "amount",
-                "type": "uint256"
-            }
-        ],
-        "name": "Funded",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": true,
-                "internalType": "uint256",
-                "name": "subscriptionId",
-                "type": "uint256"
-            }
-        ],
-        "name": "NewSubscriptionId",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": true,
-                "internalType": "address",
-                "name": "from",
-                "type": "address"
-            },
-            {
-                "indexed": true,
-                "internalType": "address",
-                "name": "to",
-                "type": "address"
-            }
-        ],
-        "name": "OwnershipTransferRequested",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": true,
-                "internalType": "address",
-                "name": "from",
-                "type": "address"
-            },
-            {
-                "indexed": true,
-                "internalType": "address",
-                "name": "to",
-                "type": "address"
-            }
-        ],
-        "name": "OwnershipTransferred",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": false,
-                "internalType": "address",
-                "name": "",
-                "type": "address"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
-            }
-        ],
-        "name": "Received",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": true,
-                "internalType": "address",
-                "name": "recipient",
-                "type": "address"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "amount",
-                "type": "uint256"
-            }
-        ],
-        "name": "Withdrawn",
-        "type": "event"
-    },
-    {
+        "type": "function",
+        "name": "beacon",
         "inputs": [],
-        "name": "acceptOwnership",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "createSubscriptionAndFundNative",
-        "outputs": [],
-        "stateMutability": "payable",
-        "type": "function"
-    },
-    {
-        "inputs": [
+        "outputs": [
             {
-                "internalType": "uint256",
                 "name": "",
-                "type": "uint256"
+                "type": "address",
+                "internalType": "contract DrandBeacon"
             }
         ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "epochAnchor",
+        "inputs": [],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
         "name": "epochSeed",
-        "outputs": [
-            {
-                "internalType": "bytes32",
-                "name": "",
-                "type": "bytes32"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
         "inputs": [
             {
-                "internalType": "uint256",
                 "name": "",
-                "type": "uint256"
+                "type": "uint256",
+                "internalType": "uint256"
             }
         ],
-        "name": "epochToRequestId",
         "outputs": [
             {
-                "internalType": "uint256",
                 "name": "",
-                "type": "uint256"
+                "type": "bytes32",
+                "internalType": "bytes32"
             }
         ],
-        "stateMutability": "view",
-        "type": "function"
+        "stateMutability": "view"
     },
     {
-        "inputs": [],
-        "name": "getBalance",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "epoch",
-                "type": "uint256"
-            }
-        ],
+        "type": "function",
         "name": "getEpochSeed",
-        "outputs": [
-            {
-                "internalType": "bytes32",
-                "name": "seed",
-                "type": "bytes32"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
         "inputs": [
             {
-                "internalType": "uint256",
-                "name": "requestId",
-                "type": "uint256"
-            }
-        ],
-        "name": "isInFlight",
-        "outputs": [
-            {
-                "internalType": "bool",
-                "name": "",
-                "type": "bool"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "owner",
-        "outputs": [
-            {
-                "internalType": "address",
-                "name": "",
-                "type": "address"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "subId",
-                "type": "uint256"
-            }
-        ],
-        "name": "pendingRequestExists",
-        "outputs": [
-            {
-                "internalType": "bool",
-                "name": "",
-                "type": "bool"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "randomnessSender",
-        "outputs": [
-            {
-                "internalType": "contract IRandomnessSender",
-                "name": "",
-                "type": "address"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "requestID",
-                "type": "uint256"
-            },
-            {
-                "internalType": "bytes32",
-                "name": "randomness",
-                "type": "bytes32"
-            }
-        ],
-        "name": "receiveRandomness",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
                 "name": "epoch",
-                "type": "uint256"
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "seed",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "roundAnchor",
+        "inputs": [],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint64",
+                "internalType": "uint64"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "roundForEpoch",
+        "inputs": [
+            {
+                "name": "epoch",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint64",
+                "internalType": "uint64"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "roundsPerEpoch",
+        "inputs": [],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint64",
+                "internalType": "uint64"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "seedEpoch",
+        "inputs": [
+            {
+                "name": "epoch",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "seed",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            }
+        ],
+        "stateMutability": "nonpayable"
+    },
+    {
+        "type": "function",
+        "name": "seedEpochWithSignature",
+        "inputs": [
+            {
+                "name": "epoch",
+                "type": "uint256",
+                "internalType": "uint256"
             },
             {
-                "internalType": "uint32",
-                "name": "callbackGasLimit",
-                "type": "uint32"
-            }
-        ],
-        "name": "requestEpochSeed",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "requestId",
-                "type": "uint256"
+                "name": "sigX",
+                "type": "uint256",
+                "internalType": "uint256"
             },
             {
-                "internalType": "uint256",
-                "name": "requestPrice",
-                "type": "uint256"
+                "name": "sigY",
+                "type": "uint256",
+                "internalType": "uint256"
             }
         ],
-        "stateMutability": "payable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
-            }
-        ],
-        "name": "requestIdToEpoch",
         "outputs": [
             {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
+                "name": "seed",
+                "type": "bytes32",
+                "internalType": "bytes32"
             }
         ],
-        "stateMutability": "view",
-        "type": "function"
+        "stateMutability": "nonpayable"
     },
     {
+        "type": "event",
+        "name": "EpochSeedReceived",
         "inputs": [
             {
-                "internalType": "address",
-                "name": "_randomnessSender",
-                "type": "address"
+                "name": "epoch",
+                "type": "uint256",
+                "indexed": true,
+                "internalType": "uint256"
+            },
+            {
+                "name": "seed",
+                "type": "bytes32",
+                "indexed": false,
+                "internalType": "bytes32"
             }
         ],
-        "name": "setRandomnessSender",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
+        "anonymous": false
     },
     {
+        "type": "error",
+        "name": "EpochBeforeAnchor",
         "inputs": [
             {
-                "internalType": "uint256",
-                "name": "subId",
-                "type": "uint256"
-            }
-        ],
-        "name": "setSubId",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "subscriptionId",
-        "outputs": [
+                "name": "epoch",
+                "type": "uint256",
+                "internalType": "uint256"
+            },
             {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
+                "name": "anchor",
+                "type": "uint256",
+                "internalType": "uint256"
             }
-        ],
-        "stateMutability": "view",
-        "type": "function"
+        ]
     },
     {
-        "inputs": [],
-        "name": "topUpSubscriptionNative",
-        "outputs": [],
-        "stateMutability": "payable",
-        "type": "function"
+        "type": "error",
+        "name": "EpochReserved",
+        "inputs": []
     },
     {
+        "type": "error",
+        "name": "InvalidAnchor",
+        "inputs": []
+    },
+    {
+        "type": "error",
+        "name": "SeedAlreadyExists",
         "inputs": [
             {
-                "internalType": "address",
-                "name": "to",
-                "type": "address"
+                "name": "epoch",
+                "type": "uint256",
+                "internalType": "uint256"
             }
-        ],
-        "name": "transferOwnership",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
+        ]
     },
     {
+        "type": "error",
+        "name": "SeedNotAvailable",
         "inputs": [
             {
-                "internalType": "address[]",
-                "name": "consumers",
-                "type": "address[]"
+                "name": "epoch",
+                "type": "uint256",
+                "internalType": "uint256"
             }
-        ],
-        "name": "updateSubscription",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
+        ]
     }
 ];
+
+module.exports = { EpochRNGABI };

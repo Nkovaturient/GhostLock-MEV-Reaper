@@ -20,12 +20,13 @@ Notable behaviors: `GhostLockLiveness` uses pull refunds on failed ETH sends; `S
 ### Arbitrum Sepolia
 
 ```
-PriceOracle=0xB049f2a5E2aeEa5950675EA89d0DA79E5749fB5C
-SolverRegistry=0xE8901D9f2f262f4F09E30344aA8470eCEbc64CBD
-GhostLockEpochRNG=0x6a0e6F76Db61985bCB4e31C71226Ba1B35dBbF1A
-GhostLockLiveness=0x056B39F4fd80C86E44D2Fc6153A3e9F3d20a2C6C
-BatchSettlement=0x64593911b86889F45d1CbEaF40397c4807505EB8
-SolverBoard=0x1e457f34Bdccf28258Cd30956bb6F2df614ddBEF
+PriceOracle=0x86c4023741467c3179683ed152471921DC2D48BC
+SolverRegistry=0x3302E3d04d166C6D23E5B09a29a8eE3d2C7Baf98
+DrandBeacon=0x74FBA5163505e43634F366c52C92824C23027076
+GhostLockEpochRNG=0x73A35514Ab9405381A323c513220e20ACb9d7c30
+GhostLockLiveness=0x9c3772c9B2E8ae8A074aa9Fc8Aaa4943e0ffC983
+BatchSettlement=0x926349E53527f690E25CF9C5d60e8791985aD14E
+SolverBoard=0xB1A20FFFf4E4e15c0735fc0a79ad8BB8F3909916
 ```
 
 ### IMP Variables
@@ -44,11 +45,13 @@ BASE_PYTH_ID=0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace 
 QUOTE_PYTH_ID=0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a  # USDC/USD
 ```
 
-# Dcipher / Blocklock contract
+# dcipher / blocklock (self-hosted)
+
+Operational guide: [docs/DCIPHER-OPS.md](../docs/DCIPHER-OPS.md).
 
 - ARB SEPOLIA CHAIN ID: 421614
 - ARB MAINNET CHAIN ID: 42161
-- Dcipher **Blocklock sender** contract on Arbitrum sepolia
+- Deploy your own senders from blocklock-solidity / randomness-solidity, or legacy Randamu proxies:
 
 ```
 BLOCKLOCK_SENDER_ARB_SEPOLIA=0xd22302849a87d5B00f13e504581BC086300DA080     
@@ -86,7 +89,7 @@ Required env vars (script reads them with `vm.env*`):
 | `BLOCKLOCK_SENDER_ARB_SEPOLIA` | Blocklock sender (**use Arbitrum Sepolia address on Sepolia; use Arbitrum One address on mainnet** — name is historical). |
 | `RANDOMNESS_SENDER_ARB_SEPOLIA` | Randomness sender (**same idea: per-chain address**). |
 | `TREASURY` | Treasury for liveness slashes / config. |
-| `TOKEN_BASE`, `TOKEN_QUOTE` | ERC-20 pair for the first market. |
+| `TOKEN_BASE`, `TOKEN_QUOTE` | ERC-20 pair for the first market. On **Arbitrum Sepolia**, quote USDC = Circle test token `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` (not mainnet `0xaf88…5831`). |
 | `MARKET_ID` | `uint` market id (e.g. `0`). |
 | `BASE_CHAINLINK`, `QUOTE_CHAINLINK` | Chainlink aggregator addresses. |
 | `BASE_PYTH_ID`, `QUOTE_PYTH_ID` | `bytes32` Pyth price feed IDs. |
@@ -137,6 +140,34 @@ Do these on the **same chain** you deployed to (e.g. Arbitrum Sepolia `421614` o
 
 4. **Operate the auction stack**  
    The deploy script already wires **SolverRegistry** → authorized caller = **SolverBoard** and **BatchSettlement** → solver board = **SolverBoard**, and registers one market + oracle feeds. Before solvers can bid meaningfully, the **SolverBoard** owner must **`registerBatchValue`** per batch. Add more **`addMarket`** / **`addPriceFeed`** calls if you need extra pairs.
+
+### Market tokens (UI + deploy)
+
+| Network | Chain ID | USDC (Circle) |
+| --- | ---: | --- |
+| Arbitrum Sepolia | 421614 | `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` |
+| Arbitrum One | 42161 | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` |
+
+Frontend reads balances via `src/holmeswap/contracts/tokens.ts`; override with `VITE_ARBITRUM_SEPOLIA_USDC_ADDRESS` if you deploy a mock quote token.
+
+```mermaid
+flowchart LR
+  subgraph deploy
+    PO[PriceOracle]
+    SR[SolverRegistry]
+    RNG[GhostLockEpochRNG]
+    LV[GhostLockLiveness]
+    BS[BatchSettlement]
+    SB[SolverBoard]
+  end
+  PO --> BS
+  SR --> SB
+  RNG --> BS
+  LV --> BS
+  SB --> BS
+  LV --> Blocklock[Blocklock sender]
+  RNG --> Rand[Randomness sender]
+```
 
 
 ---

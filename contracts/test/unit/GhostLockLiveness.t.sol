@@ -32,9 +32,7 @@ contract GhostLockLivenessTest is Test {
             liveness.submitIntentWithBond{value: sent}(200_000, uint32(block.number + 100), hex"", ct);
         vm.stopPrank();
         assertEq(requestPrice, fee);
-        TypesLib.Ciphertext memory cit0;
-        uint256 bond;
-        (,,, cit0,,,, bond,,) = liveness.intents(rid);
+        (, , , TypesLib.Ciphertext memory cit0, , , , , , , uint256 bond, , ) = liveness.intents(rid);
         assertEq(cit0.v.length, 0);
         assertEq(bond, sent - fee);
         assertEq(bond, 0.01 ether);
@@ -89,13 +87,127 @@ contract GhostLockLivenessTest is Test {
         vm.prank(address(blocklock));
         liveness.receiveBlocklock(rid, plaintext);
 
-        TypesLib.Ciphertext memory cit1;
-        uint256 bond;
-        bool ready;
-        (,,, cit1, ready,,, bond,,) = liveness.intents(rid);
+        (, , , TypesLib.Ciphertext memory cit1, , , , bool ready, , , uint256 bond, , ) = liveness.intents(rid);
         assertEq(cit1.v.length, 0);
         assertTrue(ready);
         assertEq(bond, 0);
         assertEq(alice.balance, 20 ether - fee);
+    }
+
+    // ─── tlock path ─────────────────────────────────────────────────────────
+
+    function test_tlockSubmit_bondOnly() public {
+        uint32 round = 1_000_000;
+        bytes memory blob = hex"deadbeef";
+        vm.startPrank(alice);
+        uint256 rid = liveness.submitTlockIntentWithBond{value: 0.01 ether}(round, blob);
+        vm.stopPrank();
+
+        assertGe(rid, liveness.TLOCK_REQUEST_ID_BASE());
+        (
+            address user,
+            ,
+            ,
+            ,
+            bytes memory tlockBlob,
+            bool isTlock,
+            uint32 unlockRound,
+            ,
+            ,
+            ,
+            uint256 bond,
+            ,
+        ) = liveness.intents(rid);
+        assertEq(user, alice);
+        assertTrue(isTlock);
+        assertEq(unlockRound, round);
+        assertEq(tlockBlob, blob);
+        assertEq(bond, 0.01 ether);
+    }
+
+    function test_tlockBondTooSmall_reverts() public {
+        vm.startPrank(alice);
+        vm.expectRevert(abi.encodeWithSelector(GhostLockLiveness.BondTooSmall.selector, 0.005 ether, 0.01 ether));
+        liveness.submitTlockIntentWithBond{value: 0.005 ether}(1_000_000, hex"aa");
+        vm.stopPrank();
+    }
+
+    function test_tlockReveal_afterUnlockRound() public {
+        uint32 round = 1_000_000;
+        vm.startPrank(alice);
+        uint256 rid = liveness.submitTlockIntentWithBond{value: 0.01 ether}(round, bytes("ciphertext"));
+        vm.stopPrank();
+
+        bytes memory plaintext = abi.encode(alice, uint8(0), uint256(1e18), uint256(1e18), uint8(1), uint256(1));
+        uint256 unlockTime = liveness.unlockRoundTime(round);
+        vm.warp(unlockTime);
+
+        address revealer = makeAddr("revealer");
+        vm.prank(revealer);
+        liveness.revealTlockPlaintext(rid, plaintext);
+
+        assertTrue(liveness.isReady(rid));
+        assertTrue(liveness.verifyPlaintext(rid, plaintext));
+        assertFalse(
+            liveness.verifyPlaintext(
+                rid, abi.encode(alice, uint8(1), uint256(1e18), uint256(1e18), uint8(1), uint256(1))
+            )
+        );
+        assertEq(alice.balance, 20 ether);
+    }
+
+    function test_tlockReveal_tooEarly_reverts() public {
+        uint32 round = 1_000_000;
+        vm.startPrank(alice);
+        uint256 rid = liveness.submitTlockIntentWithBond{value: 0.01 ether}(round, bytes("ciphertext"));
+        vm.stopPrank();
+
+        bytes memory plaintext = abi.encode(alice, uint8(0), uint256(1e18), uint256(1e18), uint8(1), uint256(1));
+        uint256 unlockTime = liveness.unlockRoundTime(round);
+        vm.warp(unlockTime - 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                GhostLockLiveness.RevealTooEarly.selector, rid, unlockTime - 1, unlockTime
+            )
+        );
+        liveness.revealTlockPlaintext(rid, plaintext);
+    }
+
+    function test_tlockDoubleReveal_reverts() public {
+        uint32 round = 1_000_000;
+        vm.startPrank(alice);
+        uint256 rid = liveness.submitTlockIntentWithBond{value: 0.01 ether}(round, bytes("ciphertext"));
+        vm.stopPrank();
+
+        bytes memory plaintext = abi.encode(alice, uint8(0), uint256(1e18), uint256(1e18), uint8(1), uint256(1));
+        vm.warp(liveness.unlockRoundTime(round));
+        liveness.revealTlockPlaintext(rid, plaintext);
+
+        vm.expectRevert(abi.encodeWithSelector(GhostLockLiveness.AlreadyReady.selector, rid));
+        liveness.revealTlockPlaintext(rid, plaintext);
+    }
+
+    function test_tlockForceReveal_reverts() public {
+        uint32 round = 1_000_000;
+        vm.startPrank(alice);
+        uint256 rid = liveness.submitTlockIntentWithBond{value: 0.01 ether}(round, bytes("ciphertext"));
+        vm.stopPrank();
+
+        vm.expectRevert(abi.encodeWithSelector(GhostLockLiveness.NotBlocklockIntent.selector, rid));
+        liveness.forceReveal(rid, bytes("key"));
+    }
+
+    function test_unlockRoundTime() public view {
+        assertEq(liveness.unlockRoundTime(1), 1692803367);
+        assertEq(liveness.unlockRoundTime(2), 1692803367 + 3);
+    }
+
+    function testFuzz_tlockBondMinimum(uint256 sent) public {
+        sent = bound(sent, 1, 0.009 ether);
+        vm.startPrank(alice);
+        vm.expectRevert(abi.encodeWithSelector(GhostLockLiveness.BondTooSmall.selector, sent, 0.01 ether));
+        liveness.submitTlockIntentWithBond{value: sent}(1_000_000, hex"aa");
+        vm.stopPrank();
     }
 }

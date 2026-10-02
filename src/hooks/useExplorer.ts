@@ -1,130 +1,120 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useAccount, useWatchContractEvent } from "wagmi";
-import { ethers } from "ethers";
-import { GHOSTLOCK_INTENTS_ABI } from "../lib/abis";
-import { useEthersProvider, useEthersSigner } from "./useEthers";
-import { useState } from "react";
-import { useNetworkConfig } from "./useNetworkConfig";
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAccount, usePublicClient, useWatchContractEvent } from 'wagmi'
+import { GhostLockLivenessABI } from '../holmeswap/ABI/GhostLockLiveness'
+import {
+  getAddresses,
+  isGhostLockLivenessConfigured,
+} from '../holmeswap/contracts/config'
+import { useNetworkConfig } from './useNetworkConfig'
 
-export interface tempFig{
-  id: number;
-  requestedBy: string;
-  encryptedAt: any;
-  decryptedAt: any;
-  message: string;
-  ready: boolean;
+export interface tempFig {
+  id: number
+  requestedBy: string
+  encryptedAt: number
+  decryptedAt: number | null
+  message: string
+  ready: boolean
+}
+
+function parseIntentRow(raw: unknown): {
+  requestedBy: string
+  encryptedAt: number
+  ready: boolean
+} | null {
+  if (raw == null || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const requestedBy = String(o.requestedBy ?? '')
+  if (!requestedBy || requestedBy === '0x0000000000000000000000000000000000000000') {
+    return null
+  }
+  const encryptedAt =
+    typeof o.encryptedAt === 'bigint'
+      ? Number(o.encryptedAt)
+      : Number(o.encryptedAt ?? 0)
+  return {
+    requestedBy,
+    encryptedAt,
+    ready: Boolean(o.ready),
+  }
 }
 
 export const useExplorer = (setActiveTab?: (tab: string) => void) => {
-  const signer = useEthersSigner();
-  const provider = useEthersProvider();
-  const { chainId } = useAccount();
-  const { address } = useAccount();
-  const queryClient = useQueryClient();
-  const { CONTRACT_ADDRESS, isSupported } = useNetworkConfig();
-  
-  // Track the highest request ID we've seen from events
-  const [highestRequestId, setHighestRequestId] = useState<number>(0);
-  const contractAddress = CONTRACT_ADDRESS;
-  
-  if (!contractAddress || !isSupported) {
-    console.error("GHOSTLOCK_INTENTS contract address not configured or chain not supported");
-    return {
-      data: [],
-      isLoading: false,
-      error: new Error("Contract address not configured or chain not supported"),
-      refetch: () => {},
-    };
-  }
-  
-  // Listen for IntentSubmitted events to track new intents
+  const { chainId, address } = useAccount()
+  const publicClient = usePublicClient({ chainId })
+  const queryClient = useQueryClient()
+  const { isSupported } = useNetworkConfig()
+
+  const liveness =
+    chainId && isGhostLockLivenessConfigured(chainId)
+      ? getAddresses(chainId).GhostLockLiveness
+      : undefined
+
   useWatchContractEvent({
     chainId: isSupported && chainId ? Number(chainId) : undefined,
-    abi: GHOSTLOCK_INTENTS_ABI,
-    address: isSupported && contractAddress ? (contractAddress as `0x${string}`) : undefined,
+    abi: GhostLockLivenessABI,
+    address: liveness,
     eventName: 'IntentSubmitted',
-    enabled: isSupported && !!chainId && !!contractAddress,
+    enabled: isSupported && !!liveness && !!address,
     onLogs: (logs) => {
-      // Update the highest request ID when new intents are submitted
-      logs.forEach(log => {
-        const requestId = Number(log.args.requestId);
-        if (requestId > highestRequestId) {
-          setHighestRequestId(requestId);
-        }
-      });
-      // Refresh the data
-      queryClient.invalidateQueries({ queryKey: ["userRequests"] });
-      console.log('IntentSubmitted event received:', logs);
-    },
-  });
-
-  // Listen for IntentReady events to know when decryption is complete
-  useWatchContractEvent({
-    chainId: isSupported && chainId ? Number(chainId) : undefined,
-    abi: GHOSTLOCK_INTENTS_ABI,
-    address: isSupported && contractAddress ? (contractAddress as `0x${string}`) : undefined,
-    eventName: 'IntentReady',
-    enabled: isSupported && !!chainId && !!contractAddress,
-    onLogs: (logs) => {
-      // Refresh the data when an intent is ready
-      queryClient.invalidateQueries({ queryKey: ["userRequests"] });
-      console.log('IntentReady event received:', logs);
-    },
-  });
-  
-  const getRequests = useQuery({
-    queryKey: ["userRequests", chainId, address, contractAddress],
-    queryFn: async () => {
-      if (setActiveTab) setActiveTab("decrypt");
-      try {
-        if (!signer || !provider || !chainId || !address || !contractAddress) {
-          return [];
-        }
-
-        const contract = new ethers.Contract(
-          contractAddress,
-          GHOSTLOCK_INTENTS_ABI,
-          signer
-        );
-        
-        // If we don't have any tracked request IDs yet, return empty
-        if (highestRequestId === 0) {
-          return [];
-        }
-        
-        // Fetch the last 20 intents
-        const startId = Math.max(1, highestRequestId - 19);
-        console.log("Fetching intents from", startId, "to", highestRequestId);
-        
-        const temp: tempFig[] = [];
-        for (let i = startId; i <= highestRequestId; i++) {
-          try {
-            const intent = await contract.intents(i);
-            // Check if this intent belongs to the current user
-            if (intent.requestedBy.toLowerCase() === address.toLowerCase()) {
-              temp.push({
-                id: i,
-                requestedBy: intent.requestedBy,
-                encryptedAt: intent.encryptedAt,
-                decryptedAt: intent.decrypted && intent.decrypted !== '0x' ? intent.encryptedAt : null,
-                message: intent.decrypted && intent.decrypted !== '0x' ? 'Decrypted' : 'Encrypted',
-                ready: intent.ready || false,
-              });
-            }
-          } catch (error) {
-            console.error(`Error fetching intent ${i}:`, error);
-            continue;
-          }
-        }
-        return temp;
-      } catch (error) {
-        console.error("Error fetching requests:", error);
-        return [];
+      const mine = logs.some(
+        (log) =>
+          log.args.user?.toLowerCase() === address?.toLowerCase(),
+      )
+      if (mine) {
+        queryClient.invalidateQueries({ queryKey: ['userRequests'] })
       }
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    enabled: !!signer && !!provider && !!chainId && !!address && !!contractAddress && highestRequestId > 0,
-  });
+  })
 
-  return getRequests;
-};
+  useWatchContractEvent({
+    chainId: isSupported && chainId ? Number(chainId) : undefined,
+    abi: GhostLockLivenessABI,
+    address: liveness,
+    eventName: 'IntentDecrypted',
+    enabled: isSupported && !!liveness && !!address,
+    onLogs: () => {
+      queryClient.invalidateQueries({ queryKey: ['userRequests'] })
+    },
+  })
+
+  return useQuery({
+    queryKey: ['userRequests', chainId, address, liveness],
+    queryFn: async (): Promise<tempFig[]> => {
+      if (setActiveTab) setActiveTab('decrypt')
+      if (!publicClient || !address || !liveness) return []
+
+      const ids = (await publicClient.readContract({
+        address: liveness,
+        abi: GhostLockLivenessABI,
+        functionName: 'getRequestIds',
+        args: [address],
+      })) as readonly bigint[]
+
+      const rows: tempFig[] = []
+      for (const id of [...ids].reverse().slice(0, 20)) {
+        const requestId = Number(id)
+        const raw = await publicClient.readContract({
+          address: liveness,
+          abi: GhostLockLivenessABI,
+          functionName: 'intents',
+          args: [BigInt(requestId)],
+        })
+        const it = parseIntentRow(raw)
+        if (!it || it.requestedBy.toLowerCase() !== address.toLowerCase()) {
+          continue
+        }
+        rows.push({
+          id: requestId,
+          requestedBy: it.requestedBy,
+          encryptedAt: it.encryptedAt,
+          decryptedAt: it.ready ? it.encryptedAt : null,
+          message: it.ready ? 'Decrypted' : 'Encrypted',
+          ready: it.ready,
+        })
+      }
+      return rows
+    },
+    staleTime: 60_000,
+    enabled: !!publicClient && !!address && !!liveness && isSupported,
+  })
+}

@@ -23,8 +23,8 @@ arbitrum_sepolia = "${RPC_URL}"
 arbitrum_one     = "${RPC_URL}"
 
 [etherscan]
-arbitrum_sepolia = { key = "${ETHERSCAN_KEY}", url = "https://sepolia-rollup.arbitrum.io/rpc" }
-arbitrum_one     = { key = "${ETHERSCAN_KEY}", url = "https://rpc.ankr.com/arbitrum/b9d65a15e8825e0d8ddb7c2a8baad5a51a9786a01b564f600fb131ae074b0130" }
+arbitrum_sepolia = { key = "${ETHERSCAN_KEY}", url = "https://api-sepolia.arbiscan.io/api" }
+arbitrum_one     = { key = "${ETHERSCAN_KEY}", url = "https://api.arbiscan.io/api" }
 
 [profile.default.fuzz]
 runs = 256

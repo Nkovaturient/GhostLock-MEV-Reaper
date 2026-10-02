@@ -5,9 +5,10 @@ import TokenInput from './TokenInput'
 import SwapButton from './SwapButton'
 import { SwapArrowButton } from './TokenInput'
 import SwapTradeTabs from './SwapTradeTabs'
-import LivePriceDisplay from './LivePriceDisplay'
 import MEVProtectionPanel from './MEVProtectionPanel'
-import { useOraclePrice, useSwapCalculation } from '../hooks/useOraclePrice'
+import SwapInlineError from './SwapInlineError'
+import { useSwapCalculation } from '../hooks/useOraclePrice'
+import { useOraclePriceContext } from '../context/OraclePriceContext'
 import { useGasEstimate, useMevSavingsEstimate } from '../hooks/useGasEstimate'
 import { useSwapStore, type TokenInfo } from '../stores/swapStore'
 
@@ -34,17 +35,21 @@ export default function SwapCard({
   balanceExceeded  = false,
   balance          = null,
 }: SwapCardProps) {
-  const { prices, isLoading: priceLoading } = useOraclePrice()
-  const { amountOut } = useSwapCalculation()
+  const { prices, isLoading: priceLoading } = useOraclePriceContext()
+  const { amountOut } = useSwapCalculation(prices)
   const { estimatedSavings } = useMevSavingsEstimate()
   const { totalCost } = useGasEstimate()
 
   const intentStatus = useSwapStore(s => s.intentStatus)
   const amountIn = useSwapStore(s => s.amountIn)
+  const error = useSwapStore(s => s.error)
+  const errorField = useSwapStore(s => s.errorField)
   const tradeTab = useSwapStore(s => s.tradeTab)
   const setTokenIn = useSwapStore(s => s.setTokenIn)
   const setTokenOut = useSwapStore(s => s.setTokenOut)
   const setAmountIn = useSwapStore(s => s.setAmountIn)
+  const setSwapError = useSwapStore(s => s.setSwapError)
+  const clearIntentProgress = useSwapStore(s => s.clearIntentProgress)
 
   // Update amountOut in store when calculated
   const setAmountOut = useSwapStore(s => s.setAmountOut)
@@ -67,6 +72,20 @@ export default function SwapCard({
       setAmountIn('')
     }
   }, [tradeTab, setTokenIn, setTokenOut, setAmountIn])
+
+  React.useEffect(() => {
+    const n = parseFloat(amountIn)
+    const amountOk = Number.isFinite(n) && n > 0
+    if (!error) return
+    if (errorField === 'amount' && amountOk) {
+      setSwapError(null, null)
+      if (intentStatus === 'error') clearIntentProgress()
+      return
+    }
+    setSwapError(null, null)
+    if (intentStatus === 'error') clearIntentProgress()
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- clear stale errors when user edits inputs
+  }, [amountIn, tradeTab])
 
   // Check if swap is ready
   const canSwap = isConnected &&
@@ -91,17 +110,18 @@ export default function SwapCard({
             <span>MEV Protected</span>
           </div>
         </div>
-        {tradeTab === 'limit' && (
-          <p className="text-xs text-muted-foreground leading-relaxed rounded-xl bg-muted/25 px-3 py-2.5 border border-border/25">
-            Limit orders use the same GhostLock intent: execution bounds come from the live oracle ± your slippage setting. Custom limit prices can be added later.
-          </p>
-        )}
       </motion.div>
 
       {/* Token Input */}
       <motion.div variants={cardItem} className="overflow-visible">
         <TokenInput type="in" />
       </motion.div>
+
+      {error && errorField === 'amount' && (
+        <motion.div variants={cardItem} className="mt-3">
+          <SwapInlineError message={error} field="amount" />
+        </motion.div>
+      )}
 
       {/* Swap Arrow */}
       <motion.div variants={cardItem} className="py-3 flex justify-center">
@@ -126,43 +146,43 @@ export default function SwapCard({
         </motion.div>
       )}
 
-      {/* Live Price Display */}
-      <motion.div variants={cardItem} className="mt-4">
-        <LivePriceDisplay />
-      </motion.div>
-
-      {/* Gas + bond estimate */}
-      {canSwap && (
-        <motion.div
-          variants={cardItem}
-          className="mt-3 rounded-2xl border border-border/50 bg-card/80 p-3 sm:p-4 backdrop-blur-md shadow-holme-soft"
-        >
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10">
-                <FuelIcon className="h-4 w-4 text-primary" aria-hidden />
-              </div>
-              <div className="min-w-0">
-                <span className="text-xs sm:text-sm font-semibold text-foreground">Total Cost</span>
-                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 leading-snug">
-                  Bond + estimated network fee
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:text-right sm:justify-end pl-11 sm:pl-0">
-              <span className="text-sm sm:text-base font-bold tabular-nums text-foreground break-all">
-                {totalCost}
-              </span>
-              <span className="text-[10px] sm:text-xs text-muted-foreground shrink-0">
-                (includes bond)
-              </span>
-            </div>
-          </div>
+      {/* Submit Button */}
+      {error && errorField && errorField !== 'amount' && errorField !== 'oracle' && (
+        <motion.div variants={cardItem} className="mt-4">
+          <SwapInlineError message={error} field={errorField} />
         </motion.div>
       )}
 
-      {/* Submit Button */}
-      <motion.div variants={cardItem} className="mt-5">
+      <motion.div variants={cardItem} className="mt-5 space-y-3">
+        {isConnected && amountIn && parseFloat(amountIn) > 0 && (
+          <div
+            className="flex items-center justify-between gap-3 px-1 text-sm"
+            role="status"
+            aria-label={`Total cost: ${totalCost}, bond plus estimated network fee`}
+          >
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground min-w-0">
+              <FuelIcon className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+              <span className="truncate">Intent bond (refundable)</span>
+            </span>
+            <span className="font-semibold tabular-nums text-foreground shrink-0">
+              {totalCost}
+            </span>
+          </div>
+        )}
+        {isConnected && amountIn && parseFloat(amountIn) > 0 && (
+          <p className="px-1 text-[10px] text-muted-foreground leading-snug">
+            Wallet network fee is separate (usually well under 0.0001 ETH). Bond stays on GhostLock until fill or slash rules apply — not a Uniswap-style instant swap.
+          </p>
+        )}
+        {tradeTab === 'limit' && (
+          <p className="flex items-start gap-1.5 px-1 text-[11px] sm:text-xs text-muted-foreground leading-relaxed">
+            <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-60" aria-hidden />
+            <span>
+              Same encrypted flow as Swap — your limit only fills within the live oracle ± slippage,
+              so you get a fair price without front-running attacks.
+            </span>
+          </p>
+        )}
         <SwapButton
           disabled={!canSwap || priceLoading}
           loading={isSubmitting}

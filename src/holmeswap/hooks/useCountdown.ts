@@ -9,14 +9,15 @@ const SEC_PER_BLOCK: Record<number, number> = {
   8453: 2,
 }
 
-export function useCountdown(targetBlock: number | null): number {
+export function useCountdown(targetBlock: number | null, active = true): number {
   const chainId = useChainId()
-  const hasTarget = targetBlock != null && targetBlock > 0
+  const hasTarget = active && targetBlock != null && targetBlock > 0
   const { data: currentBlock } = useBlockNumber({
     watch: false,
     query: {
       enabled: hasTarget,
-      refetchInterval: hasTarget ? 4_000 : false,
+      refetchInterval: hasTarget ? 8_000 : false,
+      refetchIntervalInBackground: false,
     },
   })
   const [secondsLeft, setSecondsLeft] = useState(0)

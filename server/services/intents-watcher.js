@@ -2,6 +2,7 @@ const db = require("../utils/db.js");
 const { ethers } = require("ethers");
 const { CONFIG, ABIS } = require("../config.js");
 const { setTimeout: delay } = require("timers/promises");
+const { requestIdFromEventArg, agentDebugLog } = require("../utils/requestId.js");
 
 const SAFETY_REORG_BLOCKS = CONFIG.WATCHER?.REORG_TOLERANCE_BLOCKS || 6;
 const MAX_BLOCK_BATCH = CONFIG.WATCHER?.MAX_BLOCK_BATCH || 50;
@@ -94,9 +95,13 @@ async function startIntentWatcher() {
     const gap = current - lastProcessedBlock;
     console.log(`[IntentWatcher] Resuming from lastEventBlock: ${lastProcessedBlock} (gap: ${gap} blocks)`);
 
-    if (gap > MAX_CATCHUP_BLOCKS) {
-      console.warn(`[IntentWatcher] Large catch-up gap (${gap} blocks). Resetting to safe block.`);
-      lastProcessedBlock = Math.max(0, current - MAX_CATCHUP_BLOCKS);
+    if (lastProcessedBlock > current) {
+      console.warn(`[IntentWatcher] lastEventBlock (${lastProcessedBlock}) ahead of chain (${current}). Resetting.`);
+      lastProcessedBlock = Math.max(0, current - SAFETY_REORG_BLOCKS - 1);
+      db.setKv("ghostlock:lastEventBlock", lastProcessedBlock);
+    } else if (gap > MAX_CATCHUP_BLOCKS) {
+      console.warn(`[IntentWatcher] Large catch-up gap (${gap} blocks). Resetting to chain head (skip historical scan).`);
+      lastProcessedBlock = Math.max(0, current - SAFETY_REORG_BLOCKS - 1);
       db.setKv("ghostlock:lastEventBlock", lastProcessedBlock);
     }
   }
@@ -122,7 +127,8 @@ async function startIntentWatcher() {
           if (events && events.length) {
             for (const ev of events) {
               try {
-                const requestId  = Number(ev.args?.requestId ?? ev.args?.[0]);
+                const rawRequestId = ev.args?.requestId ?? ev.args?.[0];
+                const requestId = requestIdFromEventArg(rawRequestId);
                 const marketId   = Number(ev.args?.marketId ?? ev.args?.[1]);
                 const epoch      = Number(ev.args?.epoch ?? ev.args?.[2]);
                 const forced     = Boolean(ev.args?.forced ?? ev.args?.[3]);
@@ -130,7 +136,18 @@ async function startIntentWatcher() {
                 const plaintext  = ev.args?.plaintext ?? ev.args?.[5];
                 const eventBlock = Number(ev.blockNumber);
 
-                if (requestId == null || !plaintext) {
+                agentDebugLog(
+                  'intents-watcher.js:processRange',
+                  'IntentDecrypted requestId parse',
+                  {
+                    rawType: typeof rawRequestId,
+                    requestId,
+                    numberLoss: typeof rawRequestId === 'bigint' ? Number(rawRequestId) : null,
+                  },
+                  'H1',
+                );
+
+                if (!requestId || !plaintext) {
                   console.warn("[IntentWatcher] Malformed IntentDecrypted event, skipping");
                   continue;
                 }
@@ -160,7 +177,20 @@ async function startIntentWatcher() {
                   decoded.isDummy ? 1 : 0
                 );
 
+                agentDebugLog(
+                  'intents-watcher.js:processRange',
+                  'pending_intents insert ok',
+                  { requestId, epoch, marketId },
+                  'H2',
+                );
+
               } catch (inner) {
+                agentDebugLog(
+                  'intents-watcher.js:processRange',
+                  'pending_intents insert failed',
+                  { err: inner?.message || String(inner) },
+                  'H2',
+                );
                 console.error("[IntentWatcher] Failed to handle event:", inner?.message || inner);
               }
             }
@@ -221,7 +251,7 @@ async function startIntentWatcher() {
 
       const gap = to - from;
       if (gap > MAX_CATCHUP_BLOCKS) {
-        const resetBlock = Math.max(0, to - MAX_CATCHUP_BLOCKS);
+        const resetBlock = Math.max(0, to - SAFETY_REORG_BLOCKS - 1);
         if (lastProcessedBlock < resetBlock) {
           console.warn(`[IntentWatcher] Block gap too large (${gap}). Resetting to block ${resetBlock}.`);
           lastProcessedBlock = resetBlock;
@@ -254,7 +284,7 @@ async function startIntentWatcher() {
       if (from <= current) {
         const gap = current - from;
         if (gap > MAX_CATCHUP_BLOCKS) {
-          const resetBlock = Math.max(0, current - MAX_CATCHUP_BLOCKS);
+          const resetBlock = Math.max(0, current - SAFETY_REORG_BLOCKS - 1);
           if (lastProcessedBlock < resetBlock) {
             lastProcessedBlock = resetBlock;
             db.setKv("ghostlock:lastEventBlock", lastProcessedBlock);

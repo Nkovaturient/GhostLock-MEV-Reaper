@@ -70,6 +70,39 @@ function _initSchema(db) {
   if (!cols.includes('amount'))       db.exec("ALTER TABLE pending_intents ADD COLUMN amount TEXT")
   if (!cols.includes('limit_price')) db.exec("ALTER TABLE pending_intents ADD COLUMN limit_price TEXT")
   if (!cols.includes('is_dummy'))    db.exec("ALTER TABLE pending_intents ADD COLUMN is_dummy INTEGER DEFAULT 0")
+
+  _migrateRequestIdToText(db)
+}
+
+function _migrateRequestIdToText(db) {
+  const reqCol = db.prepare('PRAGMA table_info(pending_intents)').all().find(c => c.name === 'request_id')
+  if (!reqCol || reqCol.type.toUpperCase() !== 'INTEGER') return
+
+  db.exec(`
+    CREATE TABLE pending_intents_text (
+      request_id     TEXT PRIMARY KEY,
+      epoch          INTEGER NOT NULL,
+      market_id      INTEGER NOT NULL,
+      detected_block INTEGER NOT NULL,
+      detected_at    INTEGER NOT NULL DEFAULT (unixepoch()),
+      processed      INTEGER NOT NULL DEFAULT 0,
+      user           TEXT,
+      side           INTEGER,
+      amount         TEXT,
+      limit_price    TEXT,
+      is_dummy       INTEGER DEFAULT 0
+    );
+    INSERT INTO pending_intents_text
+      SELECT CAST(request_id AS TEXT), epoch, market_id, detected_block, detected_at,
+             processed, user, side, amount, limit_price, is_dummy
+      FROM pending_intents;
+    DROP TABLE pending_intents;
+    ALTER TABLE pending_intents_text RENAME TO pending_intents;
+    CREATE INDEX IF NOT EXISTS idx_pi_unprocessed
+      ON pending_intents(epoch, market_id)
+      WHERE processed = 0;
+  `)
+  console.log('[db] Migrated pending_intents.request_id INTEGER → TEXT')
 }
 
 // ─── kv (watcher state) ─────────────────────────────────────────────────────
