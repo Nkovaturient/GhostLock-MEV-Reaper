@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
@@ -72,7 +72,6 @@ export default function TokenInput({ type = 'in', readOnly = false, onAmountChan
 
   const token    = type === 'in' ? tokenIn  : tokenOut
   const amount   = type === 'in' ? amountIn : amountOut
-  const setToken = type === 'in' ? setTokenIn : setTokenOut
 
   const { rawBalance, formattedBalance: balance, isLoading: balLoading } =
     useTokenBalance(token.symbol, token.decimals, type === 'in', type === 'in' ? amountIn : '')

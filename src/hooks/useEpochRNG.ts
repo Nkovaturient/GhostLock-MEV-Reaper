@@ -1,4 +1,4 @@
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi'
+import { useAccount, usePublicClient, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi'
 import { useSharedBlockNumber } from './useSharedBlockNumber'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { EPOCH_RNG_ABI } from '../lib/abis'
@@ -22,6 +22,9 @@ export function useEpochRNG() {
   const { EPOCH_RNG_ADDRESS, isSupported } = useNetworkConfig()
 
   const [lastTxHash, setLastTxHash] = useState<`0x${string}` | null>(null)
+  const publicClient = usePublicClient({
+    chainId: chainId ? Number(chainId) : undefined,
+  })
 
   const { data: receipt } = useWaitForTransactionReceipt({
     hash: lastTxHash || undefined,
@@ -61,14 +64,9 @@ export function useEpochRNG() {
 
   /** Relay a drand evmnet round and seed the epoch on-chain. Permissionless — no dcipher fee. */
   const seedEpochFromDrand = async (epoch: number) => {
-    if (!EPOCH_RNG_ADDRESS || !chainId) {
+    if (!EPOCH_RNG_ADDRESS || !chainId || !publicClient) {
       throw new Error('EpochRNG contract address not configured or chain not connected')
     }
-
-    const { createPublicClient, http } = await import('viem')
-    const { arbitrumSepolia, arbitrum } = await import('viem/chains')
-    const chain = Number(chainId) === 42161 ? arbitrum : arbitrumSepolia
-    const publicClient = createPublicClient({ chain, transport: http() })
 
     const round = await publicClient.readContract({
       address: EPOCH_RNG_ADDRESS as `0x${string}`,

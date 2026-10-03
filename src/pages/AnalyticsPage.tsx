@@ -6,7 +6,7 @@ import { formatCurrency, formatPercentage } from '../lib/utils'
 import { useMarkets, useMarketStats, refreshMarketData } from '../hooks/useMarketData'
 import { useBlockchainData, useNetworkStats, refreshBlockchainData } from '../hooks/useBlockchainData'
 import { useCryptoData, useDefiData, useExternalMEVData, refreshExternalData } from '../hooks/useExternalData'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import MEVAnalytics from '../components/analytics/MEVAnalytics'
 import { useExplorer } from '../hooks/useExplorer'
 

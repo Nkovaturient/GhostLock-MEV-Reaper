@@ -1,8 +1,8 @@
 /**
  * useOraclePrice.ts — Oracle price feed for HolmeSwap UI
  *
- * Priority: on-chain Pyth getPriceUnsafe → CoinGecko USD fallback → optional Hermes (API key).
- * Avoids PriceOracle.getLatestPrice (reverts when feeds stale) and unauthenticated Hermes (401).
+ * Priority: on-chain Pyth getPriceUnsafe → CoinGecko USD fallback → public Hermes.
+ * Avoids PriceOracle.getLatestPrice (reverts when feeds stale). Hermes is called with no API key.
  */
 import { useEffect, useMemo, useRef, useCallback, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -195,7 +195,6 @@ async function fetchPythBatchOnChain(
 async function resolveLeg(
   symbol: string,
   chainId: number,
-  publicClient: PublicClient | undefined,
   pythBatch: Map<string, OraclePriceData>,
   cgBatch: Map<string, OraclePriceData>,
 ): Promise<{ leg: OraclePriceData | null; path: string }> {
@@ -266,8 +265,8 @@ async function fetchMarketLegs(
       : new Map<string, OraclePriceData>()
 
   const [baseResult, quoteResult] = await Promise.all([
-    resolveLeg(baseSymbol, chainId, publicClient, pythBatch, cgBatch),
-    resolveLeg(quoteSymbol, chainId, publicClient, pythBatch, cgBatch),
+    resolveLeg(baseSymbol, chainId, pythBatch, cgBatch),
+    resolveLeg(quoteSymbol, chainId, pythBatch, cgBatch),
   ])
 
   return {
@@ -278,17 +277,11 @@ async function fetchMarketLegs(
 }
 
 async function fetchPythHermes(priceId: string): Promise<OraclePriceData | null> {
-  const apiKey = import.meta.env.VITE_PYTH_API_KEY
-  if (!apiKey) return null
-
-  const base = import.meta.env.VITE_PYTH_HERMES_BASE || 'https://pyth.dourolabs.app/hermes'
   try {
     const params = new URLSearchParams()
     params.append('ids[]', priceId)
-    const url = `${base}/v2/updates/price/latest?${params.toString()}`
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    })
+    const url = `${HERMES_BASE}/v2/updates/price/latest?${params.toString()}`
+    const res = await fetch(url)
     if (!res.ok) return null
 
     const data: PythPriceResponse = await res.json()

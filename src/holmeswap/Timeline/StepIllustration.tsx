@@ -1,4 +1,3 @@
-import React from 'react'
 import { Lock, Dices, Users, Coins } from 'lucide-react'
 
 export type StepKind = 'encrypt' | 'mempool' | 'ordering' | 'competing' | 'settlement'

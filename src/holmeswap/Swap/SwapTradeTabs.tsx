@@ -1,4 +1,3 @@
-import React from 'react'
 import { motion, LayoutGroup } from 'framer-motion'
 import { useSwapStore, type TradeTab } from '../stores/swapStore'
 import { cn } from '../../lib/utils'

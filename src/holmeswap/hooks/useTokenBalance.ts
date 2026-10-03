@@ -73,7 +73,7 @@ export function useTokenBalance(
       notifiedRef.current = key
       toast.error(
         'Balance unavailable',
-        `${symbol} on ${chainLabel}: ${error?.message ?? 'RPC read failed'}. Try a dedicated RPC in .env (VITE_ARBITRUM_SEPOLIA_RPC_URL).`,
+        `${symbol} on ${chainLabel}: ${error?.message ?? 'RPC read failed'}.`,
         12_000,
       )
     }

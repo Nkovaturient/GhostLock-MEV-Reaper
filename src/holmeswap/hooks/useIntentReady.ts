@@ -11,8 +11,6 @@ import { GhostLockLivenessABI } from '../ABI/GhostLockLiveness'
 import { getAddresses } from '../contracts/config'
 import { requestIdToBigInt } from '../lib/requestId'
 
-const REFETCH_INTERVAL = 10_000 // 10 seconds
-
 export function useIntentReady() {
   const chainId = useChainId()
   const lastRequestId = useSwapStore((s) => s.lastRequestId)

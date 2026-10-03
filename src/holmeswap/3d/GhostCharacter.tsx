@@ -1,11 +1,11 @@
-import React, { useRef } from 'react'
+import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Mesh } from 'three'
 
 export default function GhostCharacter() {
   const ref = useRef<Mesh>(null)
 
-  useFrame((_, delta) => {
+  useFrame(() => {
     if (ref.current) {
       ref.current.position.y += Math.sin(Date.now() * 0.001) * 0.002
     }

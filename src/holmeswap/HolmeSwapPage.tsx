@@ -1,4 +1,4 @@
-import React from 'react'
+import { useCallback, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useAccount } from 'wagmi'
 import Header              from './Layout/Header'
@@ -28,7 +28,6 @@ function HolmeSwapContent() {
   useIntentDecryptedWatch()
   useIntentLivenessFollowup()
   const intentStatus    = useSwapStore(s => s.intentStatus)
-  const targetBlock     = useSwapStore(s => s.targetBlock)
   const unlockRound     = useSwapStore(s => s.unlockRound)
   const tokenIn         = useSwapStore(s => s.tokenIn)
   const amountIn        = useSwapStore(s => s.amountIn)
@@ -45,11 +44,11 @@ function HolmeSwapContent() {
     ACTIVE_INTENT_STATUSES.has(intentStatus) &&
     (unlockRound != null && unlockRound > 0)
   const secondsLeft = useRevealCountdown(unlockRound, countdownActive)
-  React.useEffect(() => { setCountdown(secondsLeft) }, [secondsLeft, setCountdown])
+  useEffect(() => { setCountdown(secondsLeft) }, [secondsLeft, setCountdown])
 
   const isSubmitting = ['encrypting','submitting','locked','ordering','competing'].includes(intentStatus)
 
-  const handleSubmit = React.useCallback(async () => {
+  const handleSubmit = useCallback(async () => {
     if (!isConnected) return
     await submit()
   }, [isConnected, submit])
@@ -75,7 +74,7 @@ function HolmeSwapContent() {
 }
 
 export default function HolmeSwapPage() {
-  React.useEffect(() => {
+  useEffect(() => {
     const cls = 'holmeswap-active'
     document.documentElement.classList.add(cls)
     document.body.classList.add(cls)

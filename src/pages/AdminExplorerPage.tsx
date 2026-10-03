@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAccount, useChainId, useReadContract } from 'wagmi'
@@ -24,21 +24,6 @@ import { GhostLockLivenessABI } from '../holmeswap/ABI/GhostLockLiveness'
 
 const ZERO_SEED =
   '0x0000000000000000000000000000000000000000000000000000000000000000' as const
-
-const ENV_MAPPING: { exampleKey: string; viteKey: string; note?: string }[] = [
-  { exampleKey: 'GhostLockLiveness', viteKey: 'VITE_GHOSTLOCK_LIVENESS_ADDRESS', note: 'Base Sepolia defaults in config.ts' },
-  { exampleKey: 'BatchSettlement', viteKey: 'VITE_BATCH_SETTLEMENT_ADDRESS' },
-  { exampleKey: 'GhostLockEpochRNG', viteKey: 'VITE_GHOSTLOCK_EPOCH_RNG_ADDRESS' },
-  { exampleKey: 'PriceOracle', viteKey: 'VITE_PRICE_ORACLE_ADDRESS' },
-  { exampleKey: 'SolverRegistry', viteKey: 'VITE_SOLVER_REGISTRY_ADDRESS' },
-  { exampleKey: 'SolverBoard', viteKey: 'VITE_SOLVER_BOARD_ADDRESS' },
-  { exampleKey: 'Arb Sepolia Liveness', viteKey: 'VITE_ARBITRUM_SEPOLIA_GHOSTLOCK_LIVENESS_ADDRESS', note: 'Overrides hardcoded Arb Sepolia' },
-  { exampleKey: 'Arb Sepolia BatchSettlement', viteKey: 'VITE_ARBITRUM_SEPOLIA_BATCH_SETTLEMENT_ADDRESS' },
-  { exampleKey: 'Arbitrum One cluster', viteKey: 'VITE_ARBITRUM_ONE_GHOSTLOCK_LIVENESS_ADDRESS', note: 'Plus _EPOCH_RNG_, _BATCH_, _SOLVER_, etc.' },
-  { exampleKey: 'Base mainnet cluster', viteKey: 'VITE_BASE_MAINNET_GHOSTLOCK_LIVENESS_ADDRESS', note: 'Plus _EPOCH_RNG_, _BATCH_, _SOLVER_, etc.' },
-  { exampleKey: 'BLOCKLOCK_SENDER_ARB_SEPOLIA', viteKey: '—', note: 'Deploy / Foundry only; see contracts/.env.example' },
-  { exampleKey: 'RANDOMNESS_SENDER_*', viteKey: '—', note: 'Deploy / EpochRNG wiring' },
-]
 
 function isValidAddress(a: string): a is `0x${string}` {
   return /^0x[a-fA-F0-9]{40}$/.test(a)

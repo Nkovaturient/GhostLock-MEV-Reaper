@@ -1,4 +1,3 @@
-import React from 'react'
 import { motion } from 'framer-motion'
 import SwapCard from './SwapCard'
 import LivePriceDisplay from './LivePriceDisplay'

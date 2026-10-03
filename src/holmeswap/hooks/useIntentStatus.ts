@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useSwapStore, type IntentStatus } from '../stores/swapStore'
+import { useSwapStore } from '../stores/swapStore'
 import { useCountdown } from './useCountdown'
 import { useTimelineProgress } from './useTimelineProgress'
 

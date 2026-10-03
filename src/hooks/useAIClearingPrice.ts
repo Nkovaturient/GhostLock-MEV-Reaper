@@ -3,7 +3,7 @@ import { useState } from 'react';
 export function useAIClearingPrice() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function compute(intents: any) {
     setLoading(true);
@@ -22,8 +22,9 @@ export function useAIClearingPrice() {
       setResult(j);
       setLoading(false);
       return j;
-    } catch (e) {
-      setError(e.message || String(e));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
       setLoading(false);
       throw e;
     }

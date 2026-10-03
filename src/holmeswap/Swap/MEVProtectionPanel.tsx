@@ -1,7 +1,6 @@
 /**
  * MEVProtectionPanel.tsx — compact status badge (full pipeline lives in BehindTheScenesPanel).
  */
-import React from 'react'
 import { motion } from 'framer-motion'
 import { Shield, CheckCircle, Shuffle, Zap } from 'lucide-react'
 import { useSwapStore } from '../stores/swapStore'

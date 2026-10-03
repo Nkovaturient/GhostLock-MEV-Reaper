@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { formatCurrency } from '../../lib/utils'
 import { useMEVGlobal, refreshMEVData } from '../../hooks/useMEVData'
-import React, { useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useSharedBlockNumber } from '../../hooks/useSharedBlockNumber'
 

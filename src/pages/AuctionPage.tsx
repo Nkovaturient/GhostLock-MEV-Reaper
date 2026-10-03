@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion'
 import AuctionExplorer from '../components/auctions/AuctionExplorer'
-import React from 'react'
 
 export default function AuctionPage() {
   return (

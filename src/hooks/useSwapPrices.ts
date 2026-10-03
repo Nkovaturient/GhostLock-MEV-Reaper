@@ -11,11 +11,11 @@
  * Uses Pyth Hermes REST API (https://hermes.pyth.network) refreshed every 1s.
  * Also fetches USD reference prices for the UI display.
  */
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAccount, useBalance } from 'wagmi'
 import { useChainId } from 'wagmi'
-import { useSwapStore, type TokenInfo } from '../holmeswap/stores/swapStore'
+import { useSwapStore } from '../holmeswap/stores/swapStore'
 import { getTokenAddress, isNativeToken } from '../holmeswap/contracts/tokens'
 import { PYTH_PRICE_IDS, HERMES_BASE } from '../lib/pyth-ids'
 

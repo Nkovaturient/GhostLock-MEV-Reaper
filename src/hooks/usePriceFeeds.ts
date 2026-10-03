@@ -37,7 +37,7 @@ export function usePriceFeeds(tokenIn: string, tokenOut: string) {
             setIsLoading(false);
         };
         
-        ws.onerror = (err) => {
+        ws.onerror = () => {
             setError(new Error('WebSocket error'));
             setIsLoading(false);
         };

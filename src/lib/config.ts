@@ -9,10 +9,7 @@ export const USE_TLOCK = import.meta.env.VITE_USE_TLOCK === '1'
 
 export const CONFIG = {
   CHAIN_ID: 421614,
-  RPC_URL:
-    import.meta.env.VITE_ARBITRUM_SEPOLIA_RPC_URL ||
-    import.meta.env.VITE_RPC_URL ||
-    'https://sepolia-rollup.arbitrum.io/rpc',
+  RPC_URL: 'https://sepolia-rollup.arbitrum.io/rpc',
   CONTRACTS: {
     BATCH_SETTLEMENT:
       import.meta.env.VITE_ARBITRUM_SEPOLIA_BATCH_SETTLEMENT_ADDRESS ??
@@ -35,7 +32,7 @@ export const CONFIG = {
   ARBITRUM: {
     chainId: 42161,
     name: 'Arbitrum One',
-    rpcUrl: import.meta.env.VITE_ARBITRUM_ONE_RPC_URL || 'https://arb1.arbitrum.io/rpc',
+    rpcUrl: 'https://arb1.arbitrum.io/rpc',
     GHOST_LOCK_LIVENESS: import.meta.env.VITE_ARBITRUM_ONE_GHOSTLOCK_LIVENESS_ADDRESS as string,
     EPOCH_RNG: import.meta.env.VITE_ARBITRUM_ONE_EPOCH_RNG_ADDRESS as string,
     PRICE_ORACLE: import.meta.env.VITE_ARBITRUM_ONE_PRICE_ORACLE_ADDRESS as string,
@@ -46,7 +43,7 @@ export const CONFIG = {
   ARBITRUM_SEPOLIA: {
     chainId: 421614,
     name: 'Arbitrum Sepolia',
-    rpcUrl: import.meta.env.VITE_ARBITRUM_SEPOLIA_RPC_URL || 'https://sepolia-rollup.arbitrum.io/rpc',
+    rpcUrl: 'https://sepolia-rollup.arbitrum.io/rpc',
     GHOST_LOCK_LIVENESS: arbSepoliaLiveness as string,
     EPOCH_RNG: import.meta.env.VITE_ARBITRUM_SEPOLIA_EPOCH_RNG_ADDRESS as string,
     PRICE_ORACLE: import.meta.env.VITE_ARBITRUM_SEPOLIA_PRICE_ORACLE_ADDRESS as string,

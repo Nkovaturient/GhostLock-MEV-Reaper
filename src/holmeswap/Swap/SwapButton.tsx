@@ -1,4 +1,3 @@
-import React from 'react'
 import { motion } from 'framer-motion'
 import { Wallet } from 'lucide-react'
 import { useSwapStore, type TradeTab } from '../stores/swapStore'

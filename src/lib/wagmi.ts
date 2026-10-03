@@ -1,22 +1,14 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit'
 import { arbitrum, arbitrumSepolia } from 'wagmi/chains'
 
-const arbitrumRpcUrl = import.meta.env.VITE_ARBITRUM_ONE_RPC_URL
-const arbitrumSepoliaRpcUrl = import.meta.env.VITE_ARBITRUM_SEPOLIA_RPC_URL
 
-const arbitrumRpcUrls = arbitrumRpcUrl 
-  ? [arbitrumRpcUrl]
-  : [
-      'https://rpc.ankr.com/arbitrum',
-      'https://arb1.arbitrum.io/rpc',
-    ]
+const arbitrumRpcUrls = [
+  'https://rpc.ankr.com/arbitrum',
+  'https://arb1.arbitrum.io/rpc',
+]
 
-// Prefer public RPCs in the browser: official rollup often returns duplicate
-// Access-Control-Allow-Origin (*,*) which breaks fetch(); it also rate-limits heavily.
-// Set VITE_ARBITRUM_SEPOLIA_RPC_URL (Alchemy/Infura) for production.
-const arbitrumSepoliaRpcUrls = arbitrumSepoliaRpcUrl
-  ? [arbitrumSepoliaRpcUrl]
-  : ['https://arbitrum-sepolia.publicnode.com']
+
+const arbitrumSepoliaRpcUrls = ['https://arbitrum-sepolia.publicnode.com']
 
 const arbitrumOne = {
   ...arbitrum,

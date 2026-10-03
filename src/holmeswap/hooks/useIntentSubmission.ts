@@ -279,8 +279,9 @@ export function useIntentSubmission() {
   ): Promise<bigint> {
     try {
       const settledEvent = BatchSettlementABI.find(
-        (e: { type?: string; name?: string }) => e.type === 'event' && e.name === 'Settled',
-      ) as (typeof BatchSettlementABI)[number] | undefined
+        (item): item is Extract<(typeof BatchSettlementABI)[number], { type: 'event'; name: 'Settled' }> =>
+          item.type === 'event' && item.name === 'Settled',
+      )
       if (!settledEvent) return 0n
 
       const head = await client.getBlockNumber()

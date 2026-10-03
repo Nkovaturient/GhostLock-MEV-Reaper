@@ -5,7 +5,16 @@ require('dotenv').config()
 
 // External API configurations
 const COINGECKO_API = 'https://api.coingecko.com/api/v3'
-const ETHERSCAN_API = process.env.ETHERSCAN_API_KEY ? `https://api.etherscan.io/api?apikey=${process.env.ETHERSCAN_API_KEY}` : null
+function etherscanGasUrl() {
+  const key = process.env.ETHERSCAN_API_KEY
+  if (!key) return null
+  const params = new URLSearchParams({
+    module: 'gastracker',
+    action: 'gasoracle',
+    apikey: key,
+  })
+  return `https://api.etherscan.io/api?${params.toString()}`
+}
 const DEFILLAMA_API = 'https://api.llama.fi'
 const ZEROMEV_API = process.env.ZEROMEV_API
 
@@ -71,7 +80,8 @@ async function fetchDefiData() {
 // Fetch gas price data from Etherscan (if available)
 async function fetchGasData() {
   try {
-    if (!ETHERSCAN_API) {
+    const etherscanUrl = etherscanGasUrl()
+    if (!etherscanUrl) {
       // Fallback to estimated gas prices
       return {
         slow: '20',
@@ -81,7 +91,7 @@ async function fetchGasData() {
       }
     }
 
-    const response = await axios.get(`${ETHERSCAN_API}&module=gastracker&action=gasoracle`)
+    const response = await axios.get(etherscanUrl)
     
     if (response.data.status === '1') {
       const result = response.data.result
@@ -95,7 +105,7 @@ async function fetchGasData() {
     
     throw new Error('Invalid response from Etherscan')
   } catch (error) {
-    console.error('Error fetching gas data:', error.message)
+    console.error('Error fetching gas data')
     // Return estimated values
     return {
       slow: '20',

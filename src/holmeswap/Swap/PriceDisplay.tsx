@@ -5,7 +5,7 @@
  * In-flight:    shows GhostLock protecting badge
  * Post-settle:  shows MEV savings from BatchSettlement Settled event
  */
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { RefreshCw, Info, List, Check, Sparkles, Loader2 } from 'lucide-react'
 import { useSwapStore } from '../stores/swapStore'
@@ -32,7 +32,6 @@ export default function PriceDisplay({
 
   const intentStatus  = useSwapStore(s => s.intentStatus)
   const mevSavings    = useSwapStore(s => s.mevSavings)
-  const clearingPrice = useSwapStore(s => s.clearingPrice)
   const slippageBps  = useSwapStore(s => s.slippageBps)
 
   const isSettled  = intentStatus === 'settled'

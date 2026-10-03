@@ -1,7 +1,6 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_RPC_URL?: string
   readonly VITE_GHOSTLOCK_INTENTS_ADDRESS?: string
   readonly VITE_BATCH_SETTLEMENT_ADDRESS?: string
   readonly VITE_WALLETCONNECT_PROJECT_ID?: string
@@ -16,9 +15,6 @@ interface ImportMetaEnv {
   readonly VITE_INDEXER_URL?: string
   readonly VITE_ARBITRUM_GHOSTLOCK_INTENTS_ADDRESS?: string
   readonly VITE_ARBITRUM_EPOCH_RNG_ADDRESS?: string
-  readonly VITE_ARBITRUM_ONE_RPC_URL?: string
-  readonly VITE_ARBITRUM_SEPOLIA_RPC_URL?: string
-  readonly VITE_BASE_MAINNET_RPC_URL?: string
   readonly VITE_BASE_MAINNET_GHOSTLOCK_INTENTS_ADDRESS?: string
   readonly VITE_BASE_MAINNET_EPOCH_RNG_ADDRESS?: string
   readonly VITE_ARBITRUM_SEPOLIA_GHOSTLOCK_INTENTS_ADDRESS?: string
@@ -52,8 +48,6 @@ interface ImportMetaEnv {
   readonly VITE_RANDOMNESS_SENDER_ARB_MAINNET?: string
   readonly VITE_ARBITRUM_SEPOLIA_PRICE_ORACLE_ADDRESS?: string
   readonly VITE_ARBITRUM_SEPOLIA_SOLVER_REGISTRY_ADDRESS?: string
-  readonly VITE_PYTH_API_KEY?: string
-  readonly VITE_PYTH_HERMES_BASE?: string
 }
 
 interface ImportMeta {

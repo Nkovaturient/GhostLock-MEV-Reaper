@@ -1,8 +1,9 @@
-import React from 'react'
+import { lazy, Suspense } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Shield, Zap, Eye, Lock, TrendingUp, Users, ArrowRight, Github, Twitter, MessageCircle } from 'lucide-react'
-import { Scene3D } from '../components/3d/Scene3D'
+
+const Scene3D = lazy(() => import('../components/3d/Scene3D').then((m) => ({ default: m.Scene3D })))
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import Button from '../components/ui/Button'
 
@@ -51,7 +52,9 @@ export default function HomePage() {
     <div className="relative overflow-hidden">
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center justify-center">
-        <Scene3D className="absolute inset-0 opacity-30" />
+        <Suspense fallback={null}>
+          <Scene3D className="absolute inset-0 opacity-30" />
+        </Suspense>
         
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <motion.div

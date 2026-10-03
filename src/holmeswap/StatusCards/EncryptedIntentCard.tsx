@@ -6,7 +6,6 @@
  * Active state: ciphertext hash preview from store.
  */
 
-import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { GhostMegaphoneIcon } from '../assets/IllustrationIcons'
 import { useSwapStore }        from '../stores/swapStore'

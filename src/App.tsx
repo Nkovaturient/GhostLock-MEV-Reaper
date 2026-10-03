@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
@@ -5,16 +6,16 @@ import { RainbowKitProvider } from '@rainbow-me/rainbowkit'
 import { wagmiConfig } from './lib/wagmi'
 import { Toaster } from './components/ui/Toaster'
 import Navbar from './components/layout/Navbar'
-import HomePage from './pages/HomePage'
-import TradePage from './pages/TradePage'
-import AuctionPage from './pages/AuctionPage'
-import AnalyticsPage from './pages/AnalyticsPage'
-import HolmeSwapPage from './holmeswap/HolmeSwapPage'
-import AdminExplorerPage from './pages/AdminExplorerPage'
-import '@rainbow-me/rainbowkit/styles.css'
-import RevenuePage from './pages/RevenuePage'
 import { useAutoEpochSeedRequest } from './hooks/useAutoEpochSeedRequest'
-import React from 'react'
+import '@rainbow-me/rainbowkit/styles.css'
+
+const HomePage = lazy(() => import('./pages/HomePage'))
+const TradePage = lazy(() => import('./pages/TradePage'))
+const AuctionPage = lazy(() => import('./pages/AuctionPage'))
+const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
+const HolmeSwapPage = lazy(() => import('./holmeswap/HolmeSwapPage'))
+const AdminExplorerPage = lazy(() => import('./pages/AdminExplorerPage'))
+const RevenuePage = lazy(() => import('./pages/RevenuePage'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,10 +33,10 @@ function AppContent() {
 
   if (isHolmeSwap) {
     return (
-      <>
+      <Suspense fallback={null}>
         <HolmeSwapPage />
         <Toaster />
-      </>
+      </Suspense>
     )
   }
 
@@ -43,6 +44,7 @@ function AppContent() {
     <div className="min-h-screen bg-gradient-to-br from-ghost-900 via-ghost-800 to-ghost-900">
       <Navbar />
       <main className="relative">
+        <Suspense fallback={null}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/trade" element={<TradePage />} />
@@ -51,6 +53,7 @@ function AppContent() {
           <Route path="/admin" element={<AdminExplorerPage />} />
           <Route path="/pricing" element={<RevenuePage />} />
         </Routes>
+        </Suspense>
       </main>
       <Toaster />
     </div>
