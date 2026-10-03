@@ -9,7 +9,10 @@ A stealth shield against MEV, encrypting trades and settling them fair.
 | [Preview](https://ghostlock.vercel.app/) 🟢 | [Demo](https://youtu.be/plceuO9AG8c) 🎥 | [Hashnode](https://randomticks.hashnode.dev/ghostlock-mev-reaper) 📝 |
 
 
-<img width="1500" height="600" alt="ChatGPT Image Aug 30, 2025, 09_57_54 PM" src="https://github.com/user-attachments/assets/71315e2c-3956-495f-8739-fa2d08d45ac0" />
+<!-- <img width="1500" height="600" alt="ChatGPT Image Aug 30, 2025, 09_57_54 PM" src="https://github.com/user-attachments/assets/71315e2c-3956-495f-8739-fa2d08d45ac0" /> -->
+<img width="1254" height="900" alt="gl-logo" src="https://github.com/user-attachments/assets/58b1ce5e-9b4c-4016-9491-875bd26a9d98" />
+
+
 
 ## 🛡️ Overview
 
