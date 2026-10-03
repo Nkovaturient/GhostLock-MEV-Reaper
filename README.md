@@ -16,9 +16,75 @@ A stealth shield against MEV, encrypting trades and settling them fair.
 
 ## 🛡️ Overview
 
-**ENCRYPT → RANDOMIZE → EQUALIZE** on **Arbitrum Sepolia** (testnet) and **Arbitrum One** (mainnet-ready). HolmeSwap at `/holmeswap` submits encrypted intents to `GhostLockLiveness`. Self-hosted dcipher: [docs/DCIPHER-OPS.md](docs/DCIPHER-OPS.md).
+**ENCRYPT → RANDOMIZE → EQUALIZE** on **Arbitrum Sepolia** (testnet) and **Arbitrum One** (mainnet-ready). HolmeSwap at `/holmeswap` submits encrypted intents to `GhostLockLiveness`. Default ENCRYPT uses **drand quicknet tlock** (`VITE_USE_TLOCK=1`)
 
 ![GhostLock Banner](https://github.com/user-attachments/assets/8b445ad2-000e-404b-afeb-6e77991f677a)
+
+## HolmeSwap: 3-prong MEV protection (bird’s-eye)
+
+Three layers stack in order: hide the trade, shuffle fair order, then clear at one price.
+
+```mermaid
+flowchart TB
+  subgraph L1["① ENCRYPT — hide intent"]
+    HS["HolmeSwap /holmeswap"]
+    TL["tlock-js · drand quicknet"]
+    GL["GhostLockLiveness<br/>submitTlockIntentWithBond + bond"]
+    HS --> TL --> GL
+  end
+
+  subgraph L2["② RANDOMIZE — fair order"]
+    DB["DrandBeacon · evmnet signatures"]
+    ER["GhostLockEpochRNG<br/>seedEpochWithSignature"]
+    DB --> ER
+  end
+
+  subgraph L3["③ EQUALIZE — uniform clearing"]
+    SB["SolverBoard · bids / winner"]
+    BS["BatchSettlement · uniform price"]
+    SR["SolverRegistry · stake"]
+    SB --> BS
+    SR -.-> SB
+  end
+
+  GL -->|"revealTlockPlaintext → IntentDecrypted"| SB
+  ER -->|"epoch seed · deterministic sort"| SB
+  PO["PriceOracle"] -.-> BS
+
+  SRV["server solver + intents-watcher"] --> ER
+  SRV --> SB
+```
+
+**End-to-end path (Arbitrum Sepolia, chain `421614`):**
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as Trader
+  participant H as HolmeSwap
+  participant L as GhostLockLiveness
+  participant D as drand quicknet
+  participant W as Solver (server)
+  participant R as GhostLockEpochRNG
+  participant B as SolverBoard / BatchSettlement
+
+  U->>H: Connect wallet · pick pair · amount
+  H->>D: Pick unlock round (time-lock)
+  H->>L: Encrypted intent + bond (on-chain ciphertext)
+  Note over L: MEV bots see bond + blob, not size/side/price
+  H->>L: revealTlockPlaintext after round due
+  L-->>W: IntentDecrypted (marketId, epoch, plaintext hash)
+  W->>R: Relay drand round · seed epoch (permissionless)
+  W->>B: Order intents with epoch seed · run auction
+  B-->>U: Uniform clearing price · settlement
+```
+
+| Prong | What it stops | Primary contracts / libs |
+| --- | --- | --- |
+| **ENCRYPT** | Front-running on visible mempool intent | `GhostLockLiveness`, `tlock-js`, drand **quicknet** |
+| **RANDOMIZE** | Sandwich via predictable ordering | `DrandBeacon`, `GhostLockEpochRNG`, drand **evmnet** |
+| **EQUALIZE** | Price manipulation inside the batch | `SolverBoard`, `BatchSettlement`, `SolverRegistry`, `PriceOracle` |
+
 
 ## What is MEV, anyway?
 
@@ -73,8 +139,8 @@ Original Block N discarded
 
 ### 3-Layer MEV Protection Strategy
 
-1. **🔒 ENCRYPT (Layer 1)**: Blocklock time-locked encryption hides trading intents until execution block
-2. **🎲 RANDOMIZE (Layer 2)**: EpochRNG VRF-based fair ordering prevents sandwich attacks via deterministic randomization
+1. **🔒 ENCRYPT (Layer 1)**: Time-locked encryption hides trading intents until unlock (default: **drand quicknet tlock** on HolmeSwap; legacy **blocklock** via dcipher)
+2. **🎲 RANDOMIZE (Layer 2)**: Per-epoch seed from **on-chain drand (evmnet)** via `DrandBeacon` + `GhostLockEpochRNG` — fair, verifiable ordering (no privileged VRF fulfiller)
 3. **⚡ EQUALIZE (Layer 3)**: Batch auctions with uniform pricing eliminate front-running opportunities and price manipulations.
 
 ### Additional Features
@@ -82,7 +148,7 @@ Original Block N discarded
 - **🤖 Trade Intents Settlement**: Automated solver with AI-optimized clearing prices
 - **📊 Transparency Panel**: Gas estimates, unlock block ETA, expected receive amounts via 1inch API
 - **💳 Mock ERC-20 Tokens**: ETH, USDC, WETH for development and testing
-- **🌐 Multi-Chain**: Deployed on Base Sepolia (testnet) and Arbitrum One (mainnet-ready)  
+- **🌐 Multi-Chain**: HolmeSwap cluster on **Arbitrum Sepolia** (`421614`); **Arbitrum One** mainnet cluster pending deploy  
 
 
 ## 🏗️ Architecture
@@ -108,11 +174,15 @@ Original Block N discarded
 - **BatchSettlement**: Handles uniform-price batch auctions
 - **MockTokens**: Test tokens for development and testing
 
+**Current HolmeSwap cluster (also see [contracts/README.md](contracts/README.md)):** `GhostLockLiveness`, `DrandBeacon`, `GhostLockEpochRNG`, `SolverBoard`, `BatchSettlement`, `SolverRegistry`, `PriceOracle`.
+
 ### Layer 2: EpochRNG Randomization
 
 **Purpose**: Prevents sandwich attacks by randomizing intent execution order using verifiable randomness.
 
-**How it works**:
+**Current HolmeSwap path:** `DrandBeacon` verifies drand **evmnet** signatures on-chain; anyone may call `GhostLockEpochRNG.seedEpochWithSignature` (no dcipher randomness fee or owner-only fulfiller). The solver or a user can relay the beacon round tied to each epoch anchor.
+
+**How it works** (ordering logic unchanged):
 1. Backend solver automatically requests VRF seed from Drand network via EpochRNG contract for each epoch
 2. When intents are decrypted (after Layer 1), solver ensures epoch seed exists before processing
 3. Intents are grouped by epoch and ordered deterministically using `keccak256(epochSeed || requestId || user)`
@@ -217,21 +287,34 @@ npm run server
 
 ## 📋 Smart Contract Deployment
 
-### **Arbitrum Sepolia (Testnet)**
+### **Arbitrum Sepolia (Testnet)** — chain `421614`
+
+HolmeSwap and the solver default to this cluster (Sep 2026 deploy). Copy into `.env` / `server/.env` or use the `VITE_ARBITRUM_SEPOLIA_*` keys in [.env.example](.env.example).
+
+| Contract | Address |
+| --- | --- |
+| [PriceOracle](https://sepolia.arbiscan.io/address/0x86c4023741467c3179683ed152471921DC2D48BC) | `0x86c4023741467c3179683ed152471921DC2D48BC` |
+| [SolverRegistry](https://sepolia.arbiscan.io/address/0x3302E3d04d166C6D23E5B09a29a8eE3d2C7Baf98) | `0x3302E3d04d166C6D23E5B09a29a8eE3d2C7Baf98` |
+| [DrandBeacon](https://sepolia.arbiscan.io/address/0x74FBA5163505e43634F366c52C92824C23027076) | `0x74FBA5163505e43634F366c52C92824C23027076` |
+| [GhostLockEpochRNG](https://sepolia.arbiscan.io/address/0x73A35514Ab9405381A323c513220e20ACb9d7c30) | `0x73A35514Ab9405381A323c513220e20ACb9d7c30` |
+| [GhostLockLiveness](https://sepolia.arbiscan.io/address/0x9c3772c9B2E8ae8A074aa9Fc8Aaa4943e0ffC983) | `0x9c3772c9B2E8ae8A074aa9Fc8Aaa4943e0ffC983` |
+| [BatchSettlement](https://sepolia.arbiscan.io/address/0x926349E53527f690E25CF9C5d60e8791985aD14E) | `0x926349E53527f690E25CF9C5d60e8791985aD14E` |
+| [SolverBoard](https://sepolia.arbiscan.io/address/0xB1A20FFFf4E4e15c0735fc0a79ad8BB8F3909916) | `0xB1A20FFFf4E4e15c0735fc0a79ad8BB8F3909916` |
 
 - [Arbitrum Sepolia Faucet](https://www.alchemy.com/faucets/arbitrum-sepolia)
-- [PriceOracle](https://sepolia.arbiscan.io/address/0x86c4023741467c3179683ed152471921DC2D48BC) - `0x86c4023741467c3179683ed152471921DC2D48BC`
-- [SolverRegistry](https://sepolia.arbiscan.io/address/0x3302E3d04d166C6D23E5B09a29a8eE3d2C7Baf98) - `0x3302E3d04d166C6D23E5B09a29a8eE3d2C7Baf98`
-- [DrandBeacon](https://sepolia.arbiscan.io/address/0x74FBA5163505e43634F366c52C92824C23027076) - `0x74FBA5163505e43634F366c52C92824C23027076`
-- [GhostLockEpochRNG](https://sepolia.arbiscan.io/address/0x73A35514Ab9405381A323c513220e20ACb9d7c30) - `0x73A35514Ab9405381A323c513220e20ACb9d7c30`
-- [GhostLockLiveness](https://sepolia.arbiscan.io/address/0x9c3772c9B2E8ae8A074aa9Fc8Aaa4943e0ffC983) - `0x9c3772c9B2E8ae8A074aa9Fc8Aaa4943e0ffC983`
-- [BatchSettlement](https://sepolia.arbiscan.io/address/0x926349E53527f690E25CF9C5d60e8791985aD14E) - `0x926349E53527f690E25CF9C5d60e8791985aD14E`
-- [SolverBoard](https://sepolia.arbiscan.io/address/0xB1A20FFFf4E4e15c0735fc0a79ad8BB8F3909916) - `0xB1A20FFFf4E4e15c0735fc0a79ad8BB8F3909916`
+- Reference quote token (Circle test USDC): `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` — override with `VITE_ARBITRUM_SEPOLIA_USDC_ADDRESS` if needed
 
-### **Arbitrum One (Mainnet)**
+### **Arbitrum One (Mainnet)** — chain `42161`
 
-- [GHOSTLOCK_INTENTS](https://arbiscan.io/address/0x2Ad463E1f6783e610504A1027D6AdE8b2DcF10b2) - `0x2Ad463E1f6783e610504A1027D6AdE8b2DcF10b2`
-- [EPOCH_RNG](https://arbiscan.io/address/0x96EE446A832b7AdcF598C4B2340131f622677c25) - `0x96EE446A832b7AdcF598C4B2340131f622677c25`  
+**HolmeSwap 7-contract cluster:** pending deployment. After broadcast, fill `VITE_ARBITRUM_ONE_*` in `.env` and redeploy the frontend.
+
+<details>
+<summary>Legacy mainnet addresses (prior stack — not the current HolmeSwap cluster)</summary>
+
+- [GHOSTLOCK_INTENTS](https://arbiscan.io/address/0x2Ad463E1f6783e610504A1027D6AdE8b2DcF10b2) — `0x2Ad463E1f6783e610504A1027D6AdE8b2DcF10b2`
+- [EPOCH_RNG](https://arbiscan.io/address/0x96EE446A832b7AdcF598C4B2340131f622677c25) — `0x96EE446A832b7AdcF598C4B2340131f622677c25`
+
+</details>
 
 ## Future Roadmap
 
