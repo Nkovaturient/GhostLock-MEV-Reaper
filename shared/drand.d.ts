@@ -34,3 +34,9 @@ export function fetchBeacon(
 ): Promise<DrandBeaconRound>
 export function signatureToG1(signature: string): { x: bigint; y: bigint }
 export function roundForEpoch(epoch: number | bigint, anchor: DrandAnchor): bigint
+export function epochFromEvmnetRound(round: number | bigint, anchor: DrandAnchor): number
+export function epochForTimestamp(
+  timestampSec: number,
+  anchor: DrandAnchor,
+  network?: DrandNetwork,
+): number

@@ -8,6 +8,7 @@ const statusToStep: Record<IntentStatus, number> = {
   locked: 2,
   ordering: 3,
   competing: 4,
+  unfilled: 4,
   settled: 5,
   error: 0,
 }

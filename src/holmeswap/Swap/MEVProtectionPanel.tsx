@@ -31,8 +31,8 @@ export default function MEVProtectionPanel() {
     : isError
       ? 'Check the error above and try again'
       : isActive
-        ? 'Open “See behind the scenes” for live progress'
-        : 'Your swap will be encrypted and protected from frontrunning'
+        ? 'Intent swap (not instant DEX): tlock + auction often takes 3–6 min on testnet. See behind the scenes for progress.'
+        : 'Protected intent swap — slower than Uniswap, designed to reduce MEV on large trades'
 
   return (
     <motion.div

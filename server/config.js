@@ -67,6 +67,7 @@ const CONFIG = {
   },
 
   PRICE_FEED: {
+    PROVIDER:            process.env.PRICE_FEED_PROVIDER || 'coinbase',
     PYTH_BASE_URL:       'https://hermes.pyth.network',
     UPDATE_INTERVAL_MS:  30_000,
     TIMEOUT_MS:          10_000,

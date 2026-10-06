@@ -7,6 +7,7 @@ const { requestIdFromEventArg, agentDebugLog } = require("../utils/requestId.js"
 const SAFETY_REORG_BLOCKS = CONFIG.WATCHER?.REORG_TOLERANCE_BLOCKS || 6;
 const MAX_BLOCK_BATCH = CONFIG.WATCHER?.MAX_BLOCK_BATCH || 50;
 const MAX_CATCHUP_BLOCKS = CONFIG.WATCHER?.MAX_CATCHUP_BLOCKS || 10000;
+const EXTREME_CATCHUP_BLOCKS = 100_000;
 const RATE_LIMIT_RETRY_DELAY = CONFIG.WATCHER?.RATE_LIMIT_RETRY_DELAY_MS || 5000;
 const MAX_RETRIES = CONFIG.WATCHER?.MAX_RETRIES || 3;
 const DELAY_BETWEEN_BATCHES = CONFIG.WATCHER?.DELAY_BETWEEN_BATCHES_MS || 1000;
@@ -99,10 +100,12 @@ async function startIntentWatcher() {
       console.warn(`[IntentWatcher] lastEventBlock (${lastProcessedBlock}) ahead of chain (${current}). Resetting.`);
       lastProcessedBlock = Math.max(0, current - SAFETY_REORG_BLOCKS - 1);
       db.setKv("ghostlock:lastEventBlock", lastProcessedBlock);
-    } else if (gap > MAX_CATCHUP_BLOCKS) {
-      console.warn(`[IntentWatcher] Large catch-up gap (${gap} blocks). Resetting to chain head (skip historical scan).`);
+    } else if (gap > EXTREME_CATCHUP_BLOCKS) {
+      console.warn(`[IntentWatcher] Extreme catch-up gap (${gap} blocks). Resetting to chain head.`);
       lastProcessedBlock = Math.max(0, current - SAFETY_REORG_BLOCKS - 1);
       db.setKv("ghostlock:lastEventBlock", lastProcessedBlock);
+    } else if (gap > MAX_CATCHUP_BLOCKS) {
+      console.warn(`[IntentWatcher] Large catch-up gap (${gap} blocks). Will scan forward from cursor.`);
     }
   }
 
@@ -204,28 +207,40 @@ async function startIntentWatcher() {
             await delay(DELAY_BETWEEN_BATCHES);
           }
         } catch (err) {
+          const isTimeout =
+            err?.code === 'TIMEOUT' ||
+            err?.message?.includes('timeout') ||
+            err?.message?.includes('request timeout');
+
           const isRateLimit =
             err?.code === -32016 ||
             err?.message?.includes("rate limit") ||
             err?.error?.code === -32016;
 
-          if (isRateLimit && retryCount < MAX_RETRIES) {
+          if ((isTimeout || isRateLimit) && retryCount < MAX_RETRIES) {
             const backoffDelay = RATE_LIMIT_RETRY_DELAY * Math.pow(2, retryCount);
-            console.warn(`[IntentWatcher] Rate limited on range ${start}-${end}. Retrying in ${backoffDelay}ms`);
+            const reason = isTimeout ? 'Timeout' : 'Rate limit';
+            console.warn(
+              `[IntentWatcher] ${reason} on range ${start}-${end}. Retry ${retryCount + 1}/${MAX_RETRIES} in ${backoffDelay}ms`,
+            );
             await delay(backoffDelay);
             return await processRange(fromBlock, toBlock, retryCount + 1);
-          } else {
-            console.error(`[IntentWatcher] Error querying logs in range ${start}-${end}:`, err?.message || err);
-            consecutiveErrors++;
-            success = false;
-
-            if (consecutiveErrors >= 3) {
-              console.error("[IntentWatcher] Too many consecutive errors. Pausing watcher temporarily.");
-              await delay(RATE_LIMIT_RETRY_DELAY * 2);
-              consecutiveErrors = 0;
-            }
-            break;
           }
+
+          console.error(`[IntentWatcher] Error querying logs in range ${start}-${end}:`, err?.message || err);
+          consecutiveErrors++;
+          success = false;
+
+          if (consecutiveErrors >= 3) {
+            console.error("[IntentWatcher] Too many consecutive errors. Pausing watcher temporarily.");
+            await delay(RATE_LIMIT_RETRY_DELAY * 2);
+            consecutiveErrors = 0;
+          }
+
+          console.warn(`[IntentWatcher] Skipping range ${start}-${end} after ${retryCount} retries`);
+          db.setKv("ghostlock:lastEventBlock", end);
+          lastProcessedBlock = end;
+          break;
         }
 
         start = end + 1;
@@ -251,16 +266,15 @@ async function startIntentWatcher() {
 
       const gap = to - from;
       if (gap > MAX_CATCHUP_BLOCKS) {
-        const resetBlock = Math.max(0, to - SAFETY_REORG_BLOCKS - 1);
-        if (lastProcessedBlock < resetBlock) {
-          console.warn(`[IntentWatcher] Block gap too large (${gap}). Resetting to block ${resetBlock}.`);
-          lastProcessedBlock = resetBlock;
-          db.setKv("ghostlock:lastEventBlock", lastProcessedBlock);
+        console.warn(`[IntentWatcher] Block gap large (${gap}). Catching up via processRange.`);
+        if (gap > EXTREME_CATCHUP_BLOCKS) {
+          const resetBlock = Math.max(0, to - SAFETY_REORG_BLOCKS - 1);
+          if (lastProcessedBlock < resetBlock) {
+            console.warn(`[IntentWatcher] Extreme gap (${gap}). Resetting cursor to block ${resetBlock}.`);
+            lastProcessedBlock = resetBlock;
+            db.setKv("ghostlock:lastEventBlock", lastProcessedBlock);
+          }
         }
-        const newFrom = Math.max(0, lastProcessedBlock + 1 - SAFETY_REORG_BLOCKS);
-        const newTo = Math.min(newFrom + MAX_BLOCK_BATCH, to);
-        if (newFrom <= newTo) await processRange(newFrom, newTo);
-        return;
       }
 
       await processRange(from, to);
@@ -284,15 +298,14 @@ async function startIntentWatcher() {
       if (from <= current) {
         const gap = current - from;
         if (gap > MAX_CATCHUP_BLOCKS) {
-          const resetBlock = Math.max(0, current - SAFETY_REORG_BLOCKS - 1);
-          if (lastProcessedBlock < resetBlock) {
-            lastProcessedBlock = resetBlock;
-            db.setKv("ghostlock:lastEventBlock", lastProcessedBlock);
+          if (gap > EXTREME_CATCHUP_BLOCKS) {
+            const resetBlock = Math.max(0, current - SAFETY_REORG_BLOCKS - 1);
+            if (lastProcessedBlock < resetBlock) {
+              console.warn(`[IntentWatcher] Extreme gap (${gap}) on backup poll. Resetting to block ${resetBlock}.`);
+              lastProcessedBlock = resetBlock;
+              db.setKv("ghostlock:lastEventBlock", lastProcessedBlock);
+            }
           }
-          const newFrom = Math.max(0, lastProcessedBlock + 1 - SAFETY_REORG_BLOCKS);
-          const newTo = Math.min(newFrom + MAX_BLOCK_BATCH, current);
-          if (newFrom <= newTo) await processRange(newFrom, newTo);
-          return;
         }
         await processRange(from, current);
       }

@@ -20,7 +20,12 @@
 
 const { ethers } = require('ethers')
 const { CONFIG, ABIS, MARKETS } = require('../config.js')
-const { fetchDecryptedIntents, groupIntentsByMarketEpoch, filterRealIntents } = require('./intents.js')
+const {
+  fetchDecryptedIntents,
+  fetchIntentsFromDb,
+  groupIntentsByMarketEpoch,
+  filterRealIntents,
+} = require('./intents.js')
 const { computeUniformClearingPrice } = require('./price.js')
 const {
   buildIntentPayloads,
@@ -49,6 +54,10 @@ class SolverService {
     this.isRunning = false
     this.epochRNGContract = null
     this.requestedEpochs  = new Set()
+    this.warnedDrandEpochs = new Set()
+    this.surplusRetryAt = new Map()
+    this.unfilledEpochs = new Set()
+    this.lastBatchResult = null
 
     this.stats = {
       totalSettlements:         0,
@@ -97,6 +106,8 @@ class SolverService {
   }
 
   async processSettlements() {
+    await this._processPendingIntentGroups()
+
     const batches = await this._findActiveBatches()
     if (!batches.length) {
       console.log('[solver] No active batches found')
@@ -108,6 +119,95 @@ class SolverService {
         await this._processBatch(batch)
       } catch (err) {
         console.error(`[solver] Error processing batch ${batch.batchId}:`, err.message)
+      }
+    }
+  }
+
+  /** Deterministic batch id for (marketId, intent epoch) groups from IntentWatcher DB. */
+  _batchIdFromMarketEpoch(marketId, epoch) {
+    return marketId * 10_000_000_000 + epoch
+  }
+
+  /** True when epoch maps to a drand evmnet round that is not emitted yet (legacy block/100 intents). */
+  async _isDrandRoundUnavailable(epoch) {
+    try {
+      if (!this.epochRNGContract) {
+        this.epochRNGContract = new ethers.Contract(
+          CONFIG.CONTRACTS.EPOCH_RNG, ABIS.EPOCH_RNG_ABI, this.provider
+        )
+      }
+      const drandRound = await this.epochRNGContract.roundForEpoch(BigInt(epoch))
+      const drand = await import('../../shared/drand.js')
+      const dueSec = drand.timeOfRound(Number(drandRound), drand.DRAND_EVMNET)
+      const nowSec = Math.floor(Date.now() / 1000)
+      if (dueSec <= nowSec + 15) return false
+
+      if (!this.warnedDrandEpochs.has(epoch)) {
+        this.warnedDrandEpochs.add(epoch)
+        console.warn(
+          `[solver] Epoch ${epoch} → drand round ${drandRound} not due until ${new Date(dueSec * 1000).toISOString()} ` +
+          `(HTTP 425 from relays). Intents with block/100 epochs cannot settle — submit a new swap with drand-aligned epoch.`
+        )
+        // #region agent log
+        fetch('http://127.0.0.1:7863/ingest/1c9654de-6579-4cb1-ad7e-6ea69c8510bd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'983fd8'},body:JSON.stringify({sessionId:'983fd8',hypothesisId:'H3',location:'solver.js:_isDrandRoundUnavailable',message:'drand round in future',data:{epoch,drandRound:String(drandRound),dueSec,nowSec},timestamp:Date.now(),runId:'post-fix'})}).catch(()=>{});
+        // #endregion
+      }
+      return true
+    } catch (err) {
+      console.warn(`[solver] _isDrandRoundUnavailable(${epoch}):`, err.message)
+      return false
+    }
+  }
+
+  /**
+   * Drive settlement from SQLite pending_intents — HolmeSwap does not pre-publish SolverBoard batches.
+   */
+  async _processPendingIntentGroups() {
+    const intents = await fetchIntentsFromDb(CONFIG.SOLVER.MAX_BATCH_PULL)
+    if (!intents.length) return
+
+    const groups = groupIntentsByMarketEpoch(intents)
+    const groupKeys = Object.keys(groups)
+    // #region agent log
+    fetch('http://127.0.0.1:7863/ingest/1c9654de-6579-4cb1-ad7e-6ea69c8510bd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'983fd8'},body:JSON.stringify({sessionId:'983fd8',hypothesisId:'H1',location:'solver.js:_processPendingIntentGroups',message:'pending intent groups',data:{groupCount:groupKeys.length,requestIds:intents.map(i=>String(i.requestId)).slice(0,5)},timestamp:Date.now(),runId:'pre-fix'})}).catch(()=>{});
+    // #endregion
+
+    const currentBlock = await this.provider.getBlockNumber()
+    for (const batchKey of groupKeys) {
+      const realIntents = filterRealIntents(groups[batchKey])
+      if (realIntents.length < CONFIG.AUCTION.MIN_INTENTS_FOR_SETTLEMENT) continue
+
+      const { marketId, epoch } = realIntents[0]
+      const batchId = this._batchIdFromMarketEpoch(marketId, epoch)
+
+      if (await this._isDrandRoundUnavailable(epoch)) {
+        continue
+      }
+
+      if (await this._isBatchSettled(realIntents.map(i => i.requestId))) {
+        db.markIntentsProcessed(realIntents.map(i => i.requestId))
+        db.markSettlementDone(batchKey)
+        continue
+      }
+
+      const solvingRow = db.getSettlementsByStatus('solving').find(s => s.batch_key === batchKey)
+      if (solvingRow) {
+        const lastAttempt = Number(solvingRow.last_attempt || 0)
+        const ageSec = Math.floor(Date.now() / 1000) - lastAttempt
+        // Bidding window wait is ~26 blocks; allow retry if a prior run stalled mid-flight.
+        if (ageSec < 120) continue
+      }
+
+      try {
+        console.log(
+          `[solver] Pending group ${batchKey} → batchId=${batchId} intents=${realIntents.length}`
+        )
+        await this._processBatch(
+          { batchId, marketId, epoch, biddingDeadline: 0, currentBlock },
+          realIntents,
+        )
+      } catch (err) {
+        console.error(`[solver] Pending group ${batchKey} error:`, err.message)
       }
     }
   }
@@ -154,10 +254,11 @@ class SolverService {
     return 0
   }
 
-  async _processBatch(batch) {
+  async _processBatch(batch, intentsOverride = null) {
     const { batchId, marketId, epoch, biddingDeadline, currentBlock } = batch
+    if (Date.now() < (this.surplusRetryAt.get(`${marketId}-${epoch}`) || 0)) return
 
-    const intents = await this._fetchIntentsForBatch(marketId, epoch)
+    const intents = intentsOverride ?? await this._fetchIntentsForBatch(marketId, epoch)
     if (!intents.length) return
 
     const realIntents = filterRealIntents(intents)
@@ -179,6 +280,9 @@ class SolverService {
     }
 
     const seed = await this.ensureEpochSeed(epoch)
+    // #region agent log
+    fetch('http://127.0.0.1:7863/ingest/1c9654de-6579-4cb1-ad7e-6ea69c8510bd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'983fd8'},body:JSON.stringify({sessionId:'983fd8',hypothesisId:'H2',location:'solver.js:_processBatch',message:'epoch seed after ensure',data:{batchId,epoch,hasSeed:Boolean(seed&&seed!==ZERO_SEED)},timestamp:Date.now(),runId:'pre-fix'})}).catch(()=>{});
+    // #endregion
     if (!seed || seed === ZERO_SEED) {
       console.warn(`[solver] Batch ${batchId}: epoch seed unavailable, skipping`)
       return
@@ -205,8 +309,19 @@ class SolverService {
     const totalSurplus  = this._computeTotalSurplus(realIntents, priceResult.clearingPrice)
     const batchKey      = `${marketId}-${epoch}`
 
+    this._setLastBatchResult(batchId, priceResult, realIntents, totalSurplus)
+
     if (totalSurplus <= 0n) {
-      console.log(`[solver] Batch ${batchId}: insufficient surplus, skipping bid`)
+      const buyCount = realIntents.filter((i) => i.side === 0).length
+      const sellCount = realIntents.filter((i) => i.side === 1).length
+
+      this.unfilledEpochs.add(Number(epoch))
+      if (buyCount === 0 || sellCount === 0) {
+        console.log(`[solver] Batch ${batchId}: no opposite side (buy=${buyCount}, sell=${sellCount}), skipping`)
+      } else {
+        this.surplusRetryAt.set(`${marketId}-${epoch}`, Date.now() + 120_000)
+        console.log(`[solver] Batch ${batchId}: insufficient surplus after CoW match, retry in 120s`)
+      }
       return
     }
 
@@ -234,16 +349,38 @@ class SolverService {
     try {
       db.upsertSettlement(batchKey, epoch, marketId, intents.map(i => i.requestId), 'solving')
 
-      await registerBatchValueTx(this.signer, BigInt(batchId), batchValue)
+      const board = new ethers.Contract(
+        CONFIG.CONTRACTS.SOLVER_BOARD,
+        ABIS.SOLVER_BOARD_ABI,
+        this.provider
+      )
+      const batchOnChain = await board.getBatch(BigInt(batchId))
+      const finalizedBlock = Number(batchOnChain.finalizedBlock)
+      const alreadySettled = Boolean(batchOnChain.settled)
+
+      if (alreadySettled) {
+        db.markIntentsProcessed(intents.map(i => i.requestId))
+        db.markSettlementDone(batchKey)
+        return
+      }
+
+      if (finalizedBlock === 0) {
+        await registerBatchValueTx(this.signer, BigInt(batchId), batchValue)
+      }
+
+      const signerAddr = await this.signer.getAddress()
+      const alreadyBid = await board.hasBid(BigInt(batchId), signerAddr)
 
       const biddingOpen = await this._isBiddingOpen(batchId)
-      if (!biddingOpen) {
+      if (!biddingOpen && !alreadyBid) {
         console.warn(`[solver] Batch ${batchId}: bidding window closed, skipping bid`)
         return
       }
 
       const routeHash = ethers.keccak256(ethers.toUtf8Bytes(''))
-      await submitBidTx(this.signer, BigInt(batchId), totalSurplus, routeHash)
+      if (!alreadyBid && biddingOpen) {
+        await submitBidTx(this.signer, BigInt(batchId), totalSurplus, routeHash)
+      }
 
       const BIDDING_WINDOW = Number(await this._getSolverBoardConstant('BIDDING_WINDOW_BLOCKS', 10))
       const BUFFER         = Number(await this._getSolverBoardConstant('WINNER_SELECTION_BUFFER_BLOCKS', 3))
@@ -349,15 +486,63 @@ class SolverService {
     return totalBuyValue < totalSellValue ? totalBuyValue : totalSellValue
   }
 
+  _setLastBatchResult(batchId, priceResult, realIntents, totalSurplus) {
+    this.lastBatchResult = {
+      batchId: String(batchId),
+      method: priceResult.method || 'limit-grid',
+      clearingPrice: priceResult.clearingPrice.toString(),
+      ref: priceResult.ref != null ? priceResult.ref.toString() : null,
+      intentCount: realIntents.length,
+      buyBase: priceResult.totals.buyBase.toString(),
+      sellBase: priceResult.totals.sellBase.toString(),
+      surplus: totalSurplus.toString(),
+      timestamp: Date.now(),
+    }
+  }
+
   _computeTotalSurplus(intents, clearingPrice) {
-    let surplus = 0n
+    let buyVol = 0n
+    let sellVol = 0n
+
     for (const intent of intents) {
       if (intent.side === 0 && clearingPrice <= intent.limitPrice) {
-        surplus += (intent.limitPrice - clearingPrice) * intent.amount
+        buyVol += intent.amount
       } else if (intent.side === 1 && clearingPrice >= intent.limitPrice) {
-        surplus += (clearingPrice - intent.limitPrice) * intent.amount
+        sellVol += intent.amount
       }
     }
+
+    const matchedVol = buyVol < sellVol ? buyVol : sellVol
+    if (matchedVol === 0n) {
+      return 0n
+    }
+
+    let surplus = 0n
+    let buyFilled = 0n
+    let sellFilled = 0n
+
+    for (const intent of intents) {
+      if (intent.side === 0 && clearingPrice <= intent.limitPrice) {
+        const fill =
+          buyFilled + intent.amount <= matchedVol
+            ? intent.amount
+            : matchedVol - buyFilled
+        if (fill > 0n) {
+          surplus += (intent.limitPrice - clearingPrice) * fill
+          buyFilled += fill
+        }
+      } else if (intent.side === 1 && clearingPrice >= intent.limitPrice) {
+        const fill =
+          sellFilled + intent.amount <= matchedVol
+            ? intent.amount
+            : matchedVol - sellFilled
+        if (fill > 0n) {
+          surplus += (clearingPrice - intent.limitPrice) * fill
+          sellFilled += fill
+        }
+      }
+    }
+
     return surplus
   }
 
@@ -456,15 +641,16 @@ class SolverService {
       }
     } catch {}
 
-    const currentBlock = await this.provider.getBlockNumber()
-    const currentEpoch = Math.floor(currentBlock / CONFIG.AUCTION.EPOCH_DURATION_BLOCKS)
-    if (epoch > currentEpoch + 1) {
-      console.warn(`[solver] Cannot seed future epoch ${epoch}`)
-      return
-    }
-
     const round = await rng.roundForEpoch(epoch)
     const drand = await import('../../shared/drand.js')
+    const dueSec = drand.timeOfRound(Number(round), drand.DRAND_EVMNET)
+    const nowSec = Math.floor(Date.now() / 1000)
+    if (dueSec > nowSec + 15) {
+      throw new Error(
+        `drand round ${round} not due until ${new Date(dueSec * 1000).toISOString()} (epoch ${epoch})`
+      )
+    }
+
     const beacon = await drand.fetchBeacon(Number(round), drand.DRAND_EVMNET)
     const { x, y } = drand.signatureToG1(beacon.signature)
 
@@ -548,10 +734,14 @@ class SolverService {
   }
 
   getStatus() {
+    const watcherCursor = Number(db.getKv('ghostlock:lastEventBlock') || 0)
     return {
       isRunning: this.isRunning,
       hasSigner: !!this.signer,
       stats: this.stats,
+      unfilledEpochs: [...this.unfilledEpochs],
+      lastBatch: this.lastBatchResult,
+      watcherCursor,
       config: {
         chainId:            CONFIG.NETWORK.CHAIN_ID,
         settlementInterval: CONFIG.SCHEDULER.SETTLEMENT_CHECK_INTERVAL_MS,

@@ -16,6 +16,7 @@ const STATUS_LABELS: Record<string, string> = {
   locked:     'Intent locked in mempool',
   ordering:   'VRF ordering…',
   competing:  'Solvers competing…',
+  unfilled:   'Not filled',
   settled:    'Settled ✓',
   error:      'Retry',
 }

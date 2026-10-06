@@ -6,7 +6,6 @@ import { RainbowKitProvider } from '@rainbow-me/rainbowkit'
 import { wagmiConfig } from './lib/wagmi'
 import { Toaster } from './components/ui/Toaster'
 import Navbar from './components/layout/Navbar'
-import { useAutoEpochSeedRequest } from './hooks/useAutoEpochSeedRequest'
 import '@rainbow-me/rainbowkit/styles.css'
 
 const HomePage = lazy(() => import('./pages/HomePage'))
@@ -20,14 +19,15 @@ const RevenuePage = lazy(() => import('./pages/RevenuePage'))
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      staleTime: 1000 * 60 * 5,
       refetchOnWindowFocus: false,
+      retry: 1,
+      retryDelay: 2_000,
     },
   },
 })
 
 function AppContent() {
-  useAutoEpochSeedRequest()
   const location = useLocation()
   const isHolmeSwap = location.pathname === '/holmeswap'
 

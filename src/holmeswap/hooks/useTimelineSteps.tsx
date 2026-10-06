@@ -74,7 +74,9 @@ export function useTimelineSteps(): TimelineStep[] {
   const revealedDone = Boolean(revealTxHash) || isReady || step >= 3
 
   const settlementSubtitle =
-    step >= 5 && clearingPrice != null && clearingPrice > BigInt(0)
+    intentStatus === 'unfilled'
+      ? 'Not filled'
+      : step >= 5 && clearingPrice != null && clearingPrice > BigInt(0)
       ? `Uniform price paid: ${(Number(clearingPrice) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC`
       : step >= 5 && winningBid !== '0'
         ? `Settlement: ${winningBid} USDC`
@@ -83,11 +85,13 @@ export function useTimelineSteps(): TimelineStep[] {
           : 'Awaiting batch settlement'
 
   const solverSubtitle =
-    winningBid !== '0'
-      ? `Winning bid: ${winningBid} USDC`
-      : step >= 4
-        ? 'Solvers competing for best fill'
-        : 'Solver auction pending'
+    intentStatus === 'unfilled'
+      ? 'Batch not filled — no surplus'
+      : winningBid !== '0'
+        ? `Winning bid: ${winningBid} USDC`
+        : step >= 4
+          ? 'Solvers competing for best fill'
+          : 'Solver auction pending'
 
   return [
     {
@@ -190,11 +194,11 @@ export function useTimelineSteps(): TimelineStep[] {
       icon: (
         <div className="flex items-center -space-x-2">
           <SolverIcon number={2} className="w-6 h-8" />
-          <SolverIcon number={1} winner={step >= 4} className="w-8 h-10 relative z-10" />
+          <SolverIcon number={1} winner={intentStatus === 'settled'} className="w-8 h-10 relative z-10" />
           <SolverIcon number={3} className="w-6 h-8" />
         </div>
       ),
-      status: getStatus(4),
+      status: intentStatus === 'unfilled' ? 'complete' : getStatus(4),
     },
     {
       id: 5,

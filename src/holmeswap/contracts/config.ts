@@ -73,6 +73,8 @@ export function getAddresses(chainId: number): HolmeswapCluster {
 
 export const AUCTION = {
   EPOCH_DURATION_BLOCKS: 100,
+  /** Tlock hide window. 30s on every chain — long enough to leave the public mempool, short enough to wait. */
+  REVEAL_DELAY_SEC: 30,
   /** Requested callback gas; clamped on-chain to blocklock getConfig().maxGasLimit (often 500k). */
   CALLBACK_GAS_LIMIT: 700_000,
 } as const

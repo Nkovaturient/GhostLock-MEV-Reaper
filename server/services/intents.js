@@ -4,7 +4,7 @@ const { setTimeout: delay } = require("timers/promises");
 const db = require("../utils/db.js");
 const { requestIdFromEventArg } = require("../utils/requestId.js");
 
-const PROVIDER = process.env.PRICE_FEED_PROVIDER || "pyth";
+const PROVIDER = process.env.PRICE_FEED_PROVIDER || "coinbase";
 const BASE = process.env.PRICE_FEED_BASE_URL || "";
 
 async function getJSON(url, init = {}, tries = 3) {
@@ -167,7 +167,7 @@ function analyzePrivacyMetrics(intents) {
 }
 
 async function fetchPyth(symbol) {
-  const SYM = symbol.toUpperCase();
+  const SYM = symbol.toUpperCase().replace("-USDC", "-USD");
   const base = BASE || "https://hermes.pyth.network";
   const url = `${base}/v2/updates/price/latest?ids[]=${encodeURIComponent(pythIdFor(SYM))}`;
   const j = await getJSON(url);

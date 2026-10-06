@@ -50,18 +50,7 @@ class SchedulerService {
    * Start settlement check task
    */
   startSettlementCheck() {
-    const intervalId = setInterval(async () => {
-      try {
-        if (solverService.isRunning) {
-          await solverService.processSettlements();
-        }
-      } catch (error) {
-        console.error('Settlement check task failed:', error);
-      }
-    }, CONFIG.SCHEDULER.SETTLEMENT_CHECK_INTERVAL_MS);
-
-    this.tasks.set('settlementCheck', intervalId);
-    console.log(`✅ Settlement check task started (${CONFIG.SCHEDULER.SETTLEMENT_CHECK_INTERVAL_MS}ms)`);
+    console.log('[scheduler] Settlement loop is owned by the solver service')
   }
 
   /**

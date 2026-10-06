@@ -2,21 +2,29 @@ const { fetchReferencePrice } = require("./intents.js");
 const { ethers } = require("ethers");
 
 async function computeUniformClearingPrice(intents, symbol = "ETH-USD", epochSeed = null) {
-  if (!intents?.length) return { clearingPrice: 0n, totals: { buyBase: 0n, sellBase: 0n }, ref: null };
+  if (!intents?.length) {
+    return {
+      clearingPrice: 0n,
+      totals: { buyBase: 0n, sellBase: 0n },
+      ref: null,
+      method: 'none',
+    };
+  }
 
   // 1) candidate grid = unique limit prices
   const prices = Array.from(new Set(intents.map(i => i.limitPrice.toString()))).map(x => BigInt(x));
   prices.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 
-  // 2) optional reference mid from provider (for tiebreak)
   let ref = null;
+  let method = 'limit-grid';
   try {
     const q = await fetchReferencePrice(symbol);
-    // assume your intents are quoted in 1e8 or 1e6; if not, scale appropriately
-    // here we assume 1e8 for safety; replace SCALE with your actual price decimals
     const SCALE = 10n ** 8n;
     ref = BigInt(Math.round(q.price * Number(SCALE)));
-  } catch { }
+    method = q.source || 'limit-grid';
+  } catch {
+    method = 'limit-grid';
+  }
 
   let best = prices[0] ?? 1n;
   let bestDiff = (1n << 255n);
@@ -49,7 +57,8 @@ async function computeUniformClearingPrice(intents, symbol = "ETH-USD", epochSee
     )
 
     if (isBetter) {
-      bestDiff = bestTieBias = bias;
+      bestDiff = diff;
+      bestTieBias = bias;
       best = p;
       bestSeedHash = seedHash;
     }
@@ -65,6 +74,7 @@ async function computeUniformClearingPrice(intents, symbol = "ETH-USD", epochSee
     clearingPrice: best,
     totals: { buyBase: buy, sellBase: sell },
     ref,
+    method,
   };
 }
 

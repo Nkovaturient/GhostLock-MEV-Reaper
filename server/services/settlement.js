@@ -238,11 +238,18 @@ async function isBatchReadyForSettlement(provider, intents) {
 
     if (unsettled.length < CONFIG.AUCTION.MIN_INTENTS_FOR_SETTLEMENT) return false
 
-    const currentBlock  = await provider.getBlockNumber()
-    const epochEnd      = (Math.floor(currentBlock / CONFIG.AUCTION.EPOCH_DURATION_BLOCKS) + 1)
-                          * CONFIG.AUCTION.EPOCH_DURATION_BLOCKS
-    const blocksLeft    = epochEnd - currentBlock
+    // HolmeSwap encodes intent epoch from unlock block (not wall-clock epoch). On testnet with
+    // MIN_INTENTS=1, settle once decrypted intents exist — do not gate on unrelated block windows.
+    if (CONFIG.AUCTION.MIN_INTENTS_FOR_SETTLEMENT <= 1) {
+      return true
+    }
 
+    const intentEpoch = Number(unsettled[0].epoch)
+    const currentBlock = await provider.getBlockNumber()
+    const epochStart = intentEpoch * CONFIG.AUCTION.EPOCH_DURATION_BLOCKS
+    const epochEnd = epochStart + CONFIG.AUCTION.EPOCH_DURATION_BLOCKS
+    if (currentBlock < epochStart) return false
+    const blocksLeft = epochEnd - currentBlock
     return blocksLeft >= CONFIG.AUCTION.SETTLEMENT_DELAY_BLOCKS
   } catch (err) {
     console.error('[settlement] isBatchReadyForSettlement error:', err.message)

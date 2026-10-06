@@ -58,3 +58,16 @@ main().catch((err) => {
   console.error(err.message || err)
   process.exit(1)
 })
+
+
+/**
+ * Registered Solver: 04th October 2026
+ * 
+ *  server git:(main) node scripts/register-solver.js
+Wallet:  0x1Bf95a7322D3B207A5a6f1beed9dD2C8145558fC
+Balance: 1.09294671081584736 ETH
+Min bond: 1.0 ETH
+Registry: 0x3302E3d04d166C6D23E5B09a29a8eE3d2C7Baf98
+registerSolver tx: 0x2363fb937fd6a0bd0ba33c03397348fb7a5be8e76c9624cbce5ee7cbc824f448
+Registered in block 315458332
+ */

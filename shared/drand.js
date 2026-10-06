@@ -139,3 +139,23 @@ export function roundForEpoch(epoch, anchor) {
   if (e < epochAnchor) throw new Error(`drand: epoch ${epoch} precedes anchor ${epochAnchor}`)
   return BigInt(anchor.roundAnchor) + (e - epochAnchor) * BigInt(anchor.roundsPerEpoch)
 }
+
+/**
+ * Inverse of on-chain GhostLockEpochRNG.roundForEpoch (floor division).
+ * @param {number|bigint} round evmnet drand round
+ * @param {{ epochAnchor: number|bigint, roundAnchor: number|bigint, roundsPerEpoch: number|bigint }} anchor
+ */
+export function epochFromEvmnetRound(round, anchor) {
+  const r = BigInt(round)
+  const ra = BigInt(anchor.roundAnchor)
+  const ea = BigInt(anchor.epochAnchor)
+  const rpe = BigInt(anchor.roundsPerEpoch)
+  if (r < ra) throw new Error(`drand: round ${round} precedes anchor round ${ra}`)
+  return Number(ea + (r - ra) / rpe)
+}
+
+/** GhostLock epoch whose drand round is emitted at or before `timestampSec`. */
+export function epochForTimestamp(timestampSec, anchor, network = DRAND_EVMNET) {
+  const round = roundAt(timestampSec, network)
+  return epochFromEvmnetRound(round, anchor)
+}

@@ -25,7 +25,7 @@ import {
 import { useSwapStore } from '../stores/swapStore'
 import {
   encryptIntentTlock,
-  unlockRoundForBlock,
+  unlockRoundForTimestamp,
 } from '../../lib/tlock-service'
 import { GhostLockLivenessABI } from '../ABI/GhostLockLiveness'
 import { BatchSettlementABI } from '../ABI/BatchSettlement'
@@ -41,6 +41,7 @@ import {
 import { getEip1559GasForWallet } from '../lib/eip1559SubmitGas'
 import { formatSwapError } from '../lib/swapErrors'
 import { requestIdToString, requestIdToBigInt } from '../lib/requestId'
+import { intentEpochForUnlockBlocks, readDrandEpochAnchor, UNLOCK_BLOCK_TIME_SEC } from '../lib/intentEpoch'
 
 export function useIntentSubmission() {
   const { address } = useAccount()
@@ -51,10 +52,13 @@ export function useIntentSubmission() {
   const { prices, isLoading: oracleLoading } = useOraclePriceContext()
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const intentStatus = useSwapStore((s) => s.intentStatus)
+  const lastRequestId = useSwapStore((s) => s.lastRequestId)
+  const submissionOraclePrice = useSwapStore((s) => s.submissionOraclePrice)
 
   const {
     amountIn, tokenIn, tokenOut, slippageBps,
-    setIntentStatus, setStep, setTargetBlock, setUnlockRound, setLastRequestId,
+    setIntentStatus, setStep, setTargetBlock, setUnlockRound, setIntentEpoch, setLastRequestId,
     setTxHash, setCiphertextPreview, setSwapError,
     setSubmissionOraclePrice, setClearingPrice,
     setMevSavings, setWinningBid, clearIntentProgress,
@@ -109,8 +113,13 @@ export function useIntentSubmission() {
       setSubmissionOraclePrice(oracleAtSubmit)
 
       const currentBlock = await publicClient.getBlockNumber()
-      const unlockBlock = Number(currentBlock) + AUCTION.EPOCH_DURATION_BLOCKS
-      const epoch = Math.floor(unlockBlock / AUCTION.EPOCH_DURATION_BLOCKS)
+      const delayBlocks = Math.max(1, Math.ceil(AUCTION.REVEAL_DELAY_SEC / UNLOCK_BLOCK_TIME_SEC))
+      const unlockBlock = Number(currentBlock) + delayBlocks
+      const drandAnchor = await readDrandEpochAnchor(
+        publicClient,
+        addrs.GhostLockEpochRNG,
+      )
+      const epoch = intentEpochForUnlockBlocks(delayBlocks, drandAnchor)
 
       const sideStr: 'buy' | 'sell' = side === 0 ? 'buy' : 'sell'
       const intentPayload = {
@@ -125,11 +134,14 @@ export function useIntentSubmission() {
       }
 
       const gasFees = await getEip1559GasForWallet(publicClient)
-      const unlockRound = unlockRoundForBlock(unlockBlock, Number(currentBlock))
+      const unlockRound = unlockRoundForTimestamp(
+        Math.floor(Date.now() / 1000) + AUCTION.REVEAL_DELAY_SEC,
+      )
       if (!Number.isFinite(unlockRound) || unlockRound < 1) {
         throw new Error('Could not compute drand unlock round for this intent')
       }
       setUnlockRound(unlockRound)
+      setIntentEpoch(epoch)
       const { ciphertext: tlockCiphertext } = await encryptIntentTlock(intentPayload, unlockRound)
       setCiphertextPreview(tlockCiphertext.slice(0, 18) || 'tlock…')
 
@@ -173,8 +185,6 @@ export function useIntentSubmission() {
       setIntentStatus('locked')
       setStep(2)
 
-      _startPolling(requestId, addrs, publicClient, oracleAtSubmit, baseAmount)
-
     } catch (err: unknown) {
       const { message, field } = formatSwapError(err)
       console.error('[useIntentSubmission]', message)
@@ -184,12 +194,73 @@ export function useIntentSubmission() {
   }, [
     address, amountIn, chainId, tokenIn, tokenOut, slippageBps,
     prices, oracleLoading, publicClient, writeContractAsync,
-    setIntentStatus, setStep, setTargetBlock, setUnlockRound, setLastRequestId,
+    setIntentStatus, setStep, setTargetBlock, setUnlockRound, setIntentEpoch, setLastRequestId,
     setTxHash, setCiphertextPreview, setSwapError,
     setSubmissionOraclePrice, setClearingPrice, setMevSavings, setWinningBid, clearIntentProgress,
   ])
 
   useEffect(() => () => { if (pollingRef.current) clearInterval(pollingRef.current) }, [])
+
+  useEffect(() => {
+    if (intentStatus !== 'competing' || lastRequestId == null || !publicClient) {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+      }
+      return
+    }
+
+    const addrs = getAddresses(chainId)
+    const requestId = lastRequestId
+    const oracleQuote = submissionOraclePrice
+    const baseAmount = amountIn
+
+    const tick = async () => {
+      try {
+        const isSettled = await publicClient.readContract({
+          address: addrs.BatchSettlement,
+          abi: BatchSettlementABI,
+          functionName: 'settledIntent',
+          args: [requestIdToBigInt(requestId)],
+        }) as boolean
+
+        if (!isSettled) return
+        const cp = await _fetchClearingPrice(addrs, publicClient)
+        setClearingPrice(cp)
+        _computeSavings(cp, oracleQuote, baseAmount)
+        setIntentStatus('settled')
+        setStep(5)
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current)
+          pollingRef.current = null
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.warn('[intent poll]', msg)
+      }
+    }
+
+    void tick()
+    pollingRef.current = setInterval(() => { void tick() }, 20_000)
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+      }
+    }
+  }, [
+    intentStatus,
+    lastRequestId,
+    publicClient,
+    chainId,
+    submissionOraclePrice,
+    amountIn,
+    setClearingPrice,
+    setIntentStatus,
+    setStep,
+    setWinningBid,
+    setMevSavings,
+  ])
 
   return { submit }
 
@@ -237,40 +308,6 @@ export function useIntentSubmission() {
     }
 
     return requestIdToString(lastId)
-  }
-
-  function _startPolling(
-    requestId: string,
-    addrs: ReturnType<typeof getAddresses>,
-    client: NonNullable<typeof publicClient>,
-    oracleQuotePerBase: number | null,
-    baseAmount: string,
-  ) {
-    if (pollingRef.current) clearInterval(pollingRef.current)
-    // let phase: 'ready' | 'settled' = 'ready'
-
-    pollingRef.current = setInterval(async () => {
-      try {
-        const isSettled = await client.readContract({
-          address: addrs.BatchSettlement,
-          abi: BatchSettlementABI,
-          functionName: 'settledIntent',
-          args: [requestIdToBigInt(requestId)],
-        }) as boolean
-
-        if (isSettled) {
-          const cp = await _fetchClearingPrice(addrs, client)
-          setClearingPrice(cp)
-          _computeSavings(cp, oracleQuotePerBase, baseAmount)
-          setIntentStatus('settled')
-          setStep(5)
-          clearInterval(pollingRef.current!)
-          pollingRef.current = null
-        }
-      } catch (e: any) {
-        console.warn('[intent poll]', e?.message)
-      }
-    }, 12_000)
   }
 
   async function _fetchClearingPrice(

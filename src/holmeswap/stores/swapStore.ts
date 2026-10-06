@@ -14,6 +14,7 @@ export type IntentStatus =
   | 'locked'
   | 'ordering'
   | 'competing'
+  | 'unfilled'
   | 'settled'
   | 'error'
 
@@ -31,6 +32,8 @@ interface SwapState {
   intentStatus:  IntentStatus
   targetBlock:   number
   unlockRound:   number | null
+  /** Intent epoch encoded in ciphertext (unlockBlock / EPOCH_DURATION_BLOCKS). */
+  intentEpoch:   number | null
   lastRequestId: string | null
   txHash:            `0x${string}` | null
   revealTxHash:      `0x${string}` | null
@@ -71,6 +74,7 @@ interface SwapState {
   setIntentStatus:         (status: IntentStatus)        => void
   setTargetBlock:          (block: number)               => void
   setUnlockRound:          (round: number | null)        => void
+  setIntentEpoch:          (epoch: number | null)        => void
   setLastRequestId:        (id: string | null)           => void
   setTxHash:               (hash: `0x${string}` | null) => void
   setRevealTxHash:         (hash: `0x${string}` | null) => void
@@ -112,7 +116,7 @@ export const useSwapStore = create<SwapState>((set) => ({
   tokenIn: ETH, tokenOut: USDC,
   amountIn: '', amountOut: '',
   step: 0, countdown: 0,
-  intentStatus: 'idle', targetBlock: 0, unlockRound: null,
+  intentStatus: 'idle', targetBlock: 0, unlockRound: null, intentEpoch: null,
   lastRequestId: null, txHash: null, revealTxHash: null,
   ciphertextPreview: null, error: null, errorField: null,
   slippageBps: 50,
@@ -150,6 +154,7 @@ export const useSwapStore = create<SwapState>((set) => ({
   setIntentStatus:         (intentStatus)          => set({ intentStatus }),
   setTargetBlock:          (targetBlock)           => set({ targetBlock }),
   setUnlockRound:          (unlockRound)           => set({ unlockRound }),
+  setIntentEpoch:          (intentEpoch)           => set({ intentEpoch }),
   setLastRequestId:        (lastRequestId)         => set({ lastRequestId }),
   setTxHash:               (txHash)                => set({ txHash }),
   setRevealTxHash:         (revealTxHash)          => set({ revealTxHash }),
@@ -181,7 +186,7 @@ export const useSwapStore = create<SwapState>((set) => ({
 
   clearIntentProgress: () => set({
     step: 0, countdown: 0,
-    intentStatus: 'idle', targetBlock: 0, unlockRound: null,
+    intentStatus: 'idle', targetBlock: 0, unlockRound: null, intentEpoch: null,
     lastRequestId: null, txHash: null, revealTxHash: null,
     ciphertextPreview: null, error: null, errorField: null,
     submissionOraclePrice: null, clearingPrice: null,
@@ -192,7 +197,7 @@ export const useSwapStore = create<SwapState>((set) => ({
   reset: () => set({
     amountIn: '', amountOut: '',
     step: 0, countdown: 0,
-    intentStatus: 'idle', targetBlock: 0, unlockRound: null,
+    intentStatus: 'idle', targetBlock: 0, unlockRound: null, intentEpoch: null,
     lastRequestId: null, txHash: null, revealTxHash: null,
     ciphertextPreview: null, error: null, errorField: null,
     submissionOraclePrice: null, clearingPrice: null,

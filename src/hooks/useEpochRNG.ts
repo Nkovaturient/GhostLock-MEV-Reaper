@@ -1,4 +1,4 @@
-import { useAccount, usePublicClient, useReadContract, useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi'
+import { useAccount, usePublicClient, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { useSharedBlockNumber } from './useSharedBlockNumber'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { EPOCH_RNG_ABI } from '../lib/abis'
@@ -46,21 +46,6 @@ export function useEpochRNG() {
       },
     })
   }
-
-  useWatchContractEvent({
-    chainId: isSupported && chainId ? Number(chainId) : undefined,
-    abi: EPOCH_RNG_ABI,
-    address: isSupported && EPOCH_RNG_ADDRESS ? (EPOCH_RNG_ADDRESS as `0x${string}`) : undefined,
-    eventName: 'EpochSeedReceived',
-    enabled: isSupported && !!chainId && !!EPOCH_RNG_ADDRESS,
-    onLogs: (logs) => {
-      logs.forEach(log => {
-        const epoch = Number((log as any).args?.epoch ?? (log as any).args?.[0])
-        queryClient.invalidateQueries({ queryKey: ['epoch-seed', epoch] })
-        queryClient.invalidateQueries({ queryKey: ['epoch-seeds'] })
-      })
-    },
-  })
 
   /** Relay a drand evmnet round and seed the epoch on-chain. Permissionless — no dcipher fee. */
   const seedEpochFromDrand = async (epoch: number) => {

@@ -10,9 +10,10 @@ import { OraclePriceProvider } from './context/OraclePriceContext'
 import { holmeswapBg }        from './assets/index'
 import { useSwapStore }        from './stores/swapStore'
 import { useIntentSubmission } from './hooks/useIntentSubmission'
-import { useIntentDecryptedWatch } from './hooks/useIntentDecryptedWatch'
 import { useIntentLivenessFollowup } from './hooks/useIntentLivenessFollowup'
+import { useIntentAuctionProgress } from './hooks/useIntentAuctionProgress'
 import { useRevealCountdown } from './hooks/useRevealCountdown'
+import { useTimelineProgress } from './hooks/useTimelineProgress'
 import { useTokenBalance }     from './hooks/useTokenBalance'
 
 const containerVariants = {
@@ -25,9 +26,10 @@ const ACTIVE_INTENT_STATUSES = new Set(['locked', 'ordering', 'competing'])
 function HolmeSwapContent() {
   const { isConnected } = useAccount()
   const { submit }      = useIntentSubmission()
-  useIntentDecryptedWatch()
   useIntentLivenessFollowup()
+  useIntentAuctionProgress()
   const intentStatus    = useSwapStore(s => s.intentStatus)
+  useTimelineProgress(intentStatus)
   const unlockRound     = useSwapStore(s => s.unlockRound)
   const tokenIn         = useSwapStore(s => s.tokenIn)
   const amountIn        = useSwapStore(s => s.amountIn)

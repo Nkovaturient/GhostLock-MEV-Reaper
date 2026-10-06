@@ -1,14 +1,19 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit'
+import { fallback, http } from 'viem'
 import { arbitrum, arbitrumSepolia } from 'wagmi/chains'
 
+const rpcHttp = (url: string) =>
+  http(url, { retryCount: 1, retryDelay: 2_000, timeout: 10_000 })
 
 const arbitrumRpcUrls = [
-  'https://rpc.ankr.com/arbitrum',
   'https://arb1.arbitrum.io/rpc',
+  'https://rpc.ankr.com/arbitrum',
 ]
 
-
-const arbitrumSepoliaRpcUrls = ['https://arbitrum-sepolia.publicnode.com']
+const arbitrumSepoliaRpcUrls = [
+  'https://sepolia-rollup.arbitrum.io/rpc',
+  'https://arbitrum-sepolia.publicnode.com',
+]
 
 const arbitrumOne = {
   ...arbitrum,
@@ -40,4 +45,9 @@ export const wagmiConfig = getDefaultConfig({
   projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string,
   chains: [arbitrumSepoliaChain, arbitrumOne],
   ssr: false,
+  pollingInterval: 12_000,
+  transports: {
+    [arbitrumSepolia.id]: fallback(arbitrumSepoliaRpcUrls.map(rpcHttp), { rank: false }),
+    [arbitrum.id]: fallback(arbitrumRpcUrls.map(rpcHttp), { rank: false }),
+  },
 })
