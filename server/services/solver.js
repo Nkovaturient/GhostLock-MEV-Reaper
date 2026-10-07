@@ -40,6 +40,7 @@ const {
 } = require('./settlement.js')
 const { submitOpportunity, encodeSettlementCalldata } = require('../express-relay.js')
 const db = require('../utils/db.js')
+const { getPublicProvider, getLogsProvider } = require('../utils/rpc.js')
 
 const ZERO_SEED = '0x' + '00'.repeat(32)
 
@@ -49,7 +50,8 @@ function sleep(ms) {
 
 class SolverService {
   constructor() {
-    this.provider  = new ethers.JsonRpcProvider(CONFIG.NETWORK.RPC_URL)
+    this.provider = getPublicProvider()
+    this.logsProvider = getLogsProvider()
     this.signer   = null
     this.isRunning = false
     this.epochRNGContract = null
@@ -217,7 +219,7 @@ class SolverService {
       const board = new ethers.Contract(
         CONFIG.CONTRACTS.SOLVER_BOARD,
         ABIS.SOLVER_BOARD_ABI,
-        this.provider
+        this.logsProvider
       )
 
       const currentBlock = await this.provider.getBlockNumber()
@@ -466,7 +468,7 @@ class SolverService {
 
       const currentBlock = await this.provider.getBlockNumber()
       const fromBlock     = Math.max(0, lastBlock - 2000)
-      const intents       = await fetchDecryptedIntents(this.provider, fromBlock, currentBlock, epoch)
+      const intents       = await fetchDecryptedIntents(this.logsProvider, fromBlock, currentBlock, epoch)
 
       return intents.filter(i => i.marketId === marketId)
     } catch (err) {
@@ -742,6 +744,8 @@ class SolverService {
       unfilledEpochs: [...this.unfilledEpochs],
       lastBatch: this.lastBatchResult,
       watcherCursor,
+      logsRpcDedicated: CONFIG.NETWORK.LOG_RPC_URL !== CONFIG.NETWORK.RPC_URL,
+      pythKeyConfigured: Boolean(CONFIG.PRICE_FEED.PYTH_API_KEY),
       config: {
         chainId:            CONFIG.NETWORK.CHAIN_ID,
         settlementInterval: CONFIG.SCHEDULER.SETTLEMENT_CHECK_INTERVAL_MS,

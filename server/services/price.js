@@ -1,4 +1,5 @@
 const { fetchReferencePrice } = require("./intents.js");
+const { CONFIG } = require("../config.js");
 const { ethers } = require("ethers");
 
 async function computeUniformClearingPrice(intents, symbol = "ETH-USD", epochSeed = null) {
@@ -22,8 +23,11 @@ async function computeUniformClearingPrice(intents, symbol = "ETH-USD", epochSee
     const SCALE = 10n ** 8n;
     ref = BigInt(Math.round(q.price * Number(SCALE)));
     method = q.source || 'limit-grid';
-  } catch {
+  } catch (err) {
     method = 'limit-grid';
+    console.warn(
+      `[price] reference fetch failed for ${symbol} (provider=${CONFIG.PRICE_FEED.PROVIDER}): ${err?.message || err}`,
+    );
   }
 
   let best = prices[0] ?? 1n;

@@ -1,8 +1,8 @@
 /**
  * useOraclePrice.ts — Oracle price feed for HolmeSwap UI
  *
- * Priority: on-chain Pyth getPriceUnsafe → CoinGecko USD fallback → public Hermes.
- * Avoids PriceOracle.getLatestPrice (reverts when feeds stale). Hermes is called with no API key.
+ * Priority: on-chain Pyth getPriceUnsafe → CoinGecko USD fallback → server Hermes proxy.
+ * Avoids PriceOracle.getLatestPrice (reverts when feeds stale). Hermes API key stays on the server.
  */
 import { useEffect, useMemo, useRef, useCallback, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -10,7 +10,7 @@ import { useChainId, usePublicClient } from 'wagmi'
 
 import { useSwapStore } from '../stores/swapStore'
 import { getMarketFromTokenPair, getMarketId } from '../contracts/config'
-import { HERMES_BASE } from '../../lib/pyth-ids'
+import { getServerApiBase } from '../../lib/serverApiBase'
 import {
   PYTH_ABI,
   PYTH_CONTRACT_BY_CHAIN,
@@ -280,9 +280,9 @@ async function fetchPythHermes(priceId: string): Promise<OraclePriceData | null>
   try {
     const params = new URLSearchParams()
     params.append('ids[]', priceId)
-    const url = `${HERMES_BASE}/v2/updates/price/latest?${params.toString()}`
+    const url = `${getServerApiBase()}/oracle/hermes/latest?${params.toString()}`
     const res = await fetch(url)
-    if (!res.ok) return null
+    if (res.status === 503 || !res.ok) return null
 
     const data: PythPriceResponse = await res.json()
     const parsed = data.parsed?.[0]

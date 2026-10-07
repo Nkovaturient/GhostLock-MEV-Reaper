@@ -20,6 +20,7 @@ const CONFIG = {
   NETWORK: {
     CHAIN_ID:           Number(process.env.CHAIN_ID) || 421614,  // Arbitrum Sepolia
     RPC_URL:            process.env.RPC_URL || 'https://sepolia-rollup.arbitrum.io/rpc',
+    LOG_RPC_URL:        process.env.LOG_RPC_URL || process.env.RPC_URL || 'https://sepolia-rollup.arbitrum.io/rpc',
     BLOCK_TIME_SECONDS: 2,
   },
 
@@ -68,7 +69,9 @@ const CONFIG = {
 
   PRICE_FEED: {
     PROVIDER:            process.env.PRICE_FEED_PROVIDER || 'coinbase',
-    PYTH_BASE_URL:       'https://hermes.pyth.network',
+    PYTH_BASE_URL:       process.env.PYTH_BASE_URL || process.env.PRICE_FEED_BASE_URL || 'https://hermes.pyth.network',
+    PYTH_API_KEY:        process.env.PYTH_API_KEY || process.env.PRICE_FEED_API_KEY || '',
+    COINBASE_BASE_URL:   process.env.COINBASE_API_URL || 'https://api.exchange.coinbase.com',
     UPDATE_INTERVAL_MS:  30_000,
     TIMEOUT_MS:          10_000,
   },

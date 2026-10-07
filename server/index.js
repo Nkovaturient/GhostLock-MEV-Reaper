@@ -6,6 +6,7 @@ const { solverService } = require('./services/solver.js')
 const { startIntentWatcher } = require('./services/intents-watcher.js')
 const { schedulerService } = require('./services/scheduler.js')
 const db = require('./utils/db.js')
+const { CONFIG } = require('./config.js')
 
 const app = express()
 const PORT = process.env.PORT || 4800
@@ -33,9 +34,18 @@ const marketsRouter = require('./routes/markets')
 const mevRouter = require('./routes/mev')
 const externalRouter = require('./routes/external')
 const networkStats = require('./routes/network-stats')
+const oracleRouter = require('./routes/oracle.js')
 const { metricsHandler } = require('./utils/metrics.js')
 
+if (CONFIG.PRICE_FEED.PROVIDER === 'pyth' && !CONFIG.PRICE_FEED.PYTH_API_KEY) {
+  console.warn('[server] PRICE_FEED_PROVIDER=pyth but PYTH_API_KEY is not set — reference prices will fail')
+}
+if (CONFIG.NETWORK.LOG_RPC_URL !== CONFIG.NETWORK.RPC_URL) {
+  console.log('[server] Using dedicated LOG_RPC_URL for eth_getLogs')
+}
+
 app.use('/api/auctions', auctionsRouter)
+app.use('/api/oracle', oracleRouter)
 app.use('/api/markets', marketsRouter)
 app.use('/api/mev', mevRouter)
 app.use('/api/external', externalRouter)

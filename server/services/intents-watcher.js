@@ -1,6 +1,7 @@
 const db = require("../utils/db.js");
 const { ethers } = require("ethers");
 const { CONFIG, ABIS } = require("../config.js");
+const { getLogsProvider } = require("../utils/rpc.js");
 const { setTimeout: delay } = require("timers/promises");
 const { requestIdFromEventArg, agentDebugLog } = require("../utils/requestId.js");
 
@@ -75,7 +76,7 @@ function decodePlaintext(plaintext) {
 }
 
 async function startIntentWatcher() {
-  const provider = new ethers.JsonRpcProvider(CONFIG.NETWORK.RPC_URL);
+  const provider = getLogsProvider();
   const contract = new ethers.Contract(
     CONFIG.CONTRACTS.GHOSTLOCK_LIVENESS,
     ABIS.GHOSTLOCK_LIVENESS_ABI,
